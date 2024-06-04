@@ -1,14 +1,15 @@
 # Imports
 import ee  # Earth Engine API
 import numpy as np  # Numerical operations and array manipulation
+import pandas as pd  # Data manipulation and analysis
+import plotly.express as px  # Interactive plotting
 import matplotlib.pyplot as plt  # Plotting and visualization
 from PIL import Image  # Python Pillow library for images
 import urllib.request  # Opening URLs
 from datetime import datetime
-import pandas as pd  # For handling time series data
 
-# Initialize the Earth Engine module
-ee.Initialize(project='ee-govindkhavish-rit')  # Specifying the project linked to my account to access data
+# Initialize the Earth Engine module with specified project
+ee.Initialize(project='ee-govindkhavish-rit')
 
 # Define a function to expand the area of a polygon by a given factor
 def expand_polygon(coords, factor):
@@ -71,6 +72,55 @@ except ValueError:
     print("Incorrect date format, please enter dates in the format YYYY-MM-DD.")
     exit()
 
+# Function to filter Sentinel-1 GRD data for VH polarization
+def filter_s1_vh(image):
+    return image.select('VH').addBands(ee.Image.constant(0).rename('missing'))
+
+# Filter Sentinel-1 GRD data for VH polarization and specified time range
+s1_vh_collection = (ee.ImageCollection('COPERNICUS/S1_GRD')
+                    .filterBounds(selected_geometry)
+                    .filterDate(start_date, end_date)
+                    .map(filter_s1_vh))
+
+# Get VH polarization images as a list
+vh_image_list = s1_vh_collection.toList(s1_vh_collection.size())
+
+# Initialize lists to store dates and VH polarization intensity
+dates = []
+vh_intensity = []
+
+# Iterate over the image list and extract dates and VH polarization intensity
+for i in range(vh_image_list.size().getInfo()):
+    image = ee.Image(vh_image_list.get(i))
+    date = ee.Date(image.get('system:time_start')).format('YYYY-MM-dd').getInfo()
+    intensity = image.reduceRegion(ee.Reducer.mean(), selected_geometry.centroid()).get('VH')
+    # Check if VH intensity is available
+    if intensity.getInfo() is not None:
+        vh_intensity.append(intensity.getInfo())
+    else:
+        vh_intensity.append(0)
+    dates.append(date)
+
+# Create a DataFrame from the lists
+df = pd.DataFrame({'Date': dates, 'VH Intensity': vh_intensity})
+
+# Convert Date column to datetime format
+df['Date'] = pd.to_datetime(df['Date'])
+
+# Plot the interactive chart using plotly
+fig = px.line(df, x='Date', y='VH Intensity', title=f'VH Polarization Intensity over Time for {selected_location}')
+
+# Update the layout to make the plot more readable
+fig.update_layout(
+    xaxis_title='Date',
+    yaxis_title='VH Intensity',
+    hovermode='x unified',
+    template='plotly_dark'
+)
+
+# Show the plot
+fig.show()
+
 # Function to get image collection for a given geometry and polarization
 def get_image_collection(geometry, polarization, orbit):
     return (ee.ImageCollection('COPERNICUS/S1_GRD')
@@ -81,16 +131,6 @@ def get_image_collection(geometry, polarization, orbit):
             .select([polarization])
             .mean()
             .clip(geometry))
-
-# Function to get image collection for a given geometry and polarization for a time range
-def get_image_collection_time_series(geometry, polarization, orbit):
-    return (ee.ImageCollection('COPERNICUS/S1_GRD')
-            .filter(ee.Filter.eq('instrumentMode', 'IW'))
-            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', polarization))
-            .filter(ee.Filter.eq('orbitProperties_pass', orbit))
-            .filterBounds(geometry)
-            .filterDate(start_date, end_date)
-            .select([polarization]))
 
 # Function to get the thumbnail URL for an image collection
 def get_image_url(image, min_val, max_val, geometry):
@@ -140,32 +180,7 @@ descending_composite = composite_images['DESCENDING']
 ascending_composite = composite_images['ASCENDING']
 final_composite_image = (descending_composite + ascending_composite) / 2
 
-# Fetch the data from Earth Engine for VH polarization time series
-vh_time_series = get_image_collection_time_series(selected_geometry, 'VH', 'DESCENDING')
-vh_data = None
-if vh_time_series.size().getInfo() > 0:
-    vh_time_series = vh_time_series.reduce(ee.Reducer.mean())
-    vh_data = vh_time_series.reduceRegion(ee.Reducer.toList(), selected_geometry, 100).get('VH').getInfo()
-
-# Check if VH data is available
-if vh_data:
-    # Convert dates to datetime objects
-    dates = pd.date_range(start=start_date, end=end_date)
-
-    # Plot the VH polarization intensity over time in a separate window
-    plt.figure(figsize=(10, 6))
-    plt.plot(dates, vh_data, marker='o', linestyle='-')
-    plt.title('VH Polarization Intensity Time Series')
-    plt.xlabel('Date')
-    plt.ylabel('Intensity')
-    plt.xticks(rotation=45)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-else:
-    print("VH polarization data not available for the selected location or time range.")
-
-# Plot the images for the selected location in another window
+# Plot the images for the selected location
 fig, axes = plt.subplots(2, 3, figsize=(18, 12))
 fig.suptitle(selected_location)
 
@@ -194,5 +209,15 @@ axes[1, 2].set_title('Ascending Orbit Composite')
 axes[1, 2].axis('off')
 
 plt.tight_layout()
+
+# Create the second window for the final composite image
+fig2, ax2 = plt.subplots(figsize=(8, 8))
+ax2.imshow(final_composite_image, cmap='viridis')
+ax2.set_title('Final Composite Image')
+ax2.axis('off')
+
+plt.tight_layout()
+
+# Show both figures
 plt.show()
 
