@@ -4,25 +4,31 @@ This project aims to intially develop Radar Interference Tracker (RIT) using Syn
 
 ## Description
 
-An in-depth paragraph about your project and overview of use.
+This repository contains code for detecting and classifying radar signals in Synthetic Aperture Radar (SAR) raw data obtained by satellites, specifically focusing on Radio Frequency Interference (RFI) in C-band SAR images from the ESA Sentinel-1 satellite.
+
+### Key Features
+
+* Identification of RFI in SAR images
+* Estimation of parameters (pulse width, center frequency, chirp rate, repetition rate)
+* Automation of RFI detection and classification
+
+Exclusively in Python
 
 ## Getting Started
 
 ### Dependencies
 
 * Prerequisites: Google Earth Engine(GEE) Account, GEE cloud project
+* [Rich-Hall Sentinal 1 Decoder](https://github.com/Rich-Hall/sentinel1decoder)
 
 ### Installing
 
 * How/where to download your program
 
 1. Clone the repo
-```
-git clone...
-```
 2. Install GEE package (brew for MacOS)
 ```
-brew install gee
+pip install gee
 ```
 3. Enter GEE account details in terminal (Ensure the GEE cloud porject is liked to the account)
 
@@ -34,7 +40,7 @@ brew install gee
 
 ## Authors
 
-Contributors names and contact info
+Contributors names and contact info:
 
 Khavish Govind  
 [KhavishGovind](https://twitter.com/)
@@ -55,3 +61,5 @@ This project is licensed under the [MIT] License - see the LICENSE.md file for d
 
 * [@oballingerr](https://x.com/oballinger?lang=en)
 * [Bellingcat](https://www.bellingcat.com/resources/2022/02/11/radar-interference-tracker-a-new-open-source-tool-to-locate-active-military-radar-systems/)
+* [Rich-Hall Sentinal 1 Decoder](https://github.com/Rich-Hall/sentinel1decoder)
+
