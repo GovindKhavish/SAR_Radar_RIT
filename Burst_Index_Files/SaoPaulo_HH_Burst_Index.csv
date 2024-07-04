@@ -1,0 +1,17 @@
+Burst,Signal Type,Signal Type_str,ECC Number,ECC Number_str,AziBlock_Sum,AziBlock_Start,AziBlock_Stop
+1,1,Noise,13,Stripmap 3 w/o interl.Cal,7,0,7
+2,8,Tx Cal,13,Stripmap 3 w/o interl.Cal,99,8,107
+3,9,Rx Cal,13,Stripmap 3 w/o interl.Cal,49,108,157
+4,10,EPDN Cal,13,Stripmap 3 w/o interl.Cal,149,158,307
+5,8,Tx Cal,13,Stripmap 3 w/o interl.Cal,19,308,327
+6,9,Rx Cal,13,Stripmap 3 w/o interl.Cal,19,328,347
+7,10,EPDN Cal,13,Stripmap 3 w/o interl.Cal,59,348,407
+8,0,Echo,13,Stripmap 3 w/o interl.Cal,19249,408,19657
+9,0,Echo,13,Stripmap 3 w/o interl.Cal,28874,19658,48532
+10,8,Tx Cal,13,Stripmap 3 w/o interl.Cal,19,48533,48552
+11,9,Rx Cal,13,Stripmap 3 w/o interl.Cal,19,48553,48572
+12,10,EPDN Cal,13,Stripmap 3 w/o interl.Cal,59,48573,48632
+13,8,Tx Cal,13,Stripmap 3 w/o interl.Cal,99,48633,48732
+14,9,Rx Cal,13,Stripmap 3 w/o interl.Cal,49,48733,48782
+15,10,EPDN Cal,13,Stripmap 3 w/o interl.Cal,149,48783,48932
+16,1,Noise,13,Stripmap 3 w/o interl.Cal,7,48933,48940
