@@ -32,7 +32,7 @@ import sys
 from pathlib import Path, PurePath;
 ##########################################################################################
 # Define the subdirectory path
-_simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
+_simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\SAR_Radar_RIT\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
 
 # Check if the subdirectory exists
 if _simraddir.exists():
@@ -99,7 +99,7 @@ sent1_meta  = l0file.packet_metadata
 bust_info   = l0file.burst_info
 print(bust_info)
 
-bust_info.to_csv('Augsburg_VH_Burst_Index.csv', index=False)
+#bust_info.to_csv('Augsburg_VH_Burst_Index.csv', index=False)
 
 ### The satellite ephemeris data is sub-commutated across multiple packets due to its
 ###  relatively low update rate, so we need to perform an extra step to extract this information.
