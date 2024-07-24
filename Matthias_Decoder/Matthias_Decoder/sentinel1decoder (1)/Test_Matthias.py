@@ -70,8 +70,9 @@ import sentinel1decoder;
 #filename = '\s1a-iw-raw-s-vh-20190219t033540-20190219t033612-025993-02e57a.dat'
 
 # Northern Sea VH
-filepath = r"C:\Users\govin\OneDrive\Desktop\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
-filename = '\s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
+#filepath = r"C:\Users\govin\OneDrive\Desktop\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
+filepath = "/Users/khavishgovind/Documents/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE/"
+filename = 's1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 
 inputfile = filepath+filename
@@ -104,6 +105,7 @@ sent1_meta  = l0file.packet_metadata
 bust_info   = l0file.burst_info
 print(bust_info)
 
+### CSV Method
 #bust_info.to_csv('NorthernSea(Ireland)_VH_Burst_Index.csv', index=False)
 
 ### The satellite ephemeris data is sub-commutated across multiple packets due to its
