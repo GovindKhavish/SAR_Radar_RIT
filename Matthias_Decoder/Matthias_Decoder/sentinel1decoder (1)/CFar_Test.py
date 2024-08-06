@@ -43,11 +43,6 @@ else:
 
 import sentinel1decoder;
 
-
-#----------------------------------Functions----------------------------------------------
-
-
-
 #-----------------------------------------------------------------------------------------
 ### -> https://nbviewer.org/github/Rich-Hall/sentinel1Level0DecodingDemo/blob/main/sentinel1Level0DecodingDemo.ipynb
 
@@ -73,8 +68,16 @@ import sentinel1decoder;
 
 # Northern Sea VH
 #filepath = r"C:\Users\govin\OneDrive\Desktop\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
-filepath = "/Users/khavishgovind/Documents/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE/"
-filename = 's1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
+# filepath = "/Users/khavishgovind/Documents/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE/"
+# filename = 's1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
+
+# White Sands VH
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\WhiteSand_USA\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE"
+#filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
+
+# Mipur VH
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 
 inputfile = filepath+filename
@@ -115,7 +118,7 @@ sent1_ephe  = l0file.ephemeris
 
 #------------------------- 3. Extract Data -----------------------------#
 ### 3.1 - Select Packets to Process
-selected_burst  = 11;
+selected_burst  = 57;
 
 print("Into selection mode\n")
 
@@ -146,8 +149,6 @@ print(headline)
 ### Decode the IQ data
 radar_data = l0file.get_burst_data(selected_burst); 
 
-print(radar_data.ndim)
-
 
 ### Format the complex numbers as strings
 #formatted_data = np.array([[f"{x.real}+{x.imag}j" for x in row] for row in radar_data])
@@ -160,10 +161,6 @@ print(radar_data.ndim)
 #l0file.save_burst_data(selected_burst);
 
 print("Starting to graph")
-RFI_slice = radar_data[136:137,450:459]
-noise_slice = radar_data[137:138,:700]
-Test_slice = radar_data[134:140,:700]
-#print(radar_data[136:137,69:618])
 
 ### Plotting our array, we can see that although there is clearly some structure to the data
 # Plot the raw IQ data extracted from the data file
@@ -232,25 +229,45 @@ def create_mask(size, num_guard_cells=3, num_averaging_cells=10):
     mask /= (2 * num_averaging_cells)
     
     return mask
+
+def create_padded_mask(radar_data,cfar_mask):
+    rows = radar_data.shape[0]
+    cols = radar_data.shape[1]
+
+    temp_mask = np.zeros((rows,cols))
+    temp_mask[:cfar_mask.shape[0], 0:cfar_mask.shape[1]] = cfar_mask
+    return temp_mask
     
 def cfar_1d(radar_data, cfar_mask, threshold_multiplier=1.5):
     rows, cols = radar_data.shape
     threshold_map = np.zeros_like(radar_data)
 
-    padded_mask = np.pad(cfar_mask, (0, cols - len(cfar_mask)), 'constant')
-    
-    fft_data = np.fft.fft2(radar_data)
-    fft_mask = np.fft.fft2(padded_mask.reshape(-1, 1), s=radar_data.shape)
-    fft_mask = np.resize(fft_mask, fft_data.shape)
-    fft_threshold = fft_data * fft_mask
+    padded_mask = create_padded_mask(radar_data,cfar_mask)
 
+    fft_data = np.fft.fft2(radar_data)
+    fft_mask = np.fft.fft2(padded_mask)
+    
+    fft_threshold = fft_data * fft_mask
+    
     threshold_map = np.real(np.fft.ifft2(fft_threshold))
+    
     threshold_map *= threshold_multiplier
     
     return threshold_map
 
 def detect_targets(radar_data, threshold_map):
-    return radar_data > threshold_map
+    target_map = np.zeros_like(radar_data)
+    len_col = radar_data.shape[1]
+    len_row = radar_data.shape[0]
+
+    for row in range(len_row):
+
+        for col in range(len_col):
+
+            if(radar_data[row,col] > threshold_map[row,col]):
+                target_map[row,col] = radar_data[row,col]
+
+    return target_map
 
 
 #------------------------ Apply CFAR filtering --------------------------------
@@ -261,37 +278,38 @@ slow_time_size = radar_data.shape[0]  # Extract the slow time dimension
 
 # Create vertical CFAR mask
 cfar_mask = create_mask(slow_time_size)
+padded_mask = create_padded_mask(radar_data,cfar_mask)
 thres_map = cfar_1d(radar_data,cfar_mask)
-# targets = detect_targets(radar_data, thres_map)
+targets = detect_targets(radar_data, thres_map)
 
-# Plot the CFAR Mask
-plt.figure(figsize=(2, 10))
-plt.imshow(thres_map, interpolation='none', aspect='auto')
-plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.colorbar(label='Filter Amplitude')
-plt.show()
-
-# fig, ax = plt.subplots(1, 3, figsize=(24, 8))
-
-# ax[0].imshow(cfar_mask, aspect='auto', interpolation='none', origin='lower')
-# ax[0].set_title('Original Radar Data', fontweight='bold')
-# ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
-# ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-# ax[1].imshow(np.abs(thres_map), aspect='auto', interpolation='none', origin='lower')
-# ax[1].set_title('Threshold Values', fontweight='bold')
-# ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
-# ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-# ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none', origin='lower')
-# ax[2].set_title('After CFAR', fontweight='bold')
-# ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
-# ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-# plt.tight_layout()
+# # Plot the CFAR Mask
+# plt.figure(figsize=(2, 10))
+# plt.imshow(targets, interpolation='none', aspect='auto')
+# plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+# plt.colorbar(label='Filter Amplitude')
 # plt.show()
+
+fig, ax = plt.subplots(1, 3, figsize=(24, 8))
+
+ax[0].imshow(abs(radar_data), aspect='auto', interpolation='none', origin='lower')
+ax[0].set_title('Original Radar Data', fontweight='bold')
+ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
+ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
+
+ax[1].imshow(np.abs(thres_map), aspect='auto', interpolation='none', origin='lower')
+ax[1].set_title('Threshold Values', fontweight='bold')
+ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
+ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
+
+ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none', origin='lower')
+ax[2].set_title('After CFAR', fontweight='bold')
+ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
+ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
+
+plt.tight_layout()
+plt.show()
 
 
 
