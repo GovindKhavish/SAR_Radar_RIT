@@ -146,6 +146,8 @@ print(headline)
 ### Decode the IQ data
 radar_data = l0file.get_burst_data(selected_burst); 
 
+print(radar_data.ndim)
+
 
 ### Format the complex numbers as strings
 #formatted_data = np.array([[f"{x.real}+{x.imag}j" for x in row] for row in radar_data])
@@ -206,23 +208,6 @@ Test_slice = radar_data[134:140,:700]
 # FFT each azimuth line (SlowTime) 
 #radar_data = np.fft.fftshift(np.fft.fft(radar_data, axis=0), axes=0);
 
-### Plot Slices
-# plt.plot(abs(radar_data[136:137,70:618]).reshape(-1),label='Interference')
-# plt.plot(abs(radar_data[137:138,69:618]).reshape(-1),c = 'r',label='Noise')
-# plt.legend(loc='upper right')
-# plt.show()
-
-
-
-# Calculate the minimum, maximum, and mean values
-min_value = np.min(abs(radar_data[136:137,69:618]))
-max_value = np.max(abs(radar_data[136:137,69:618]))
-mean_value = np.mean(abs(radar_data[136:137,69:618]))
-print(min_value)
-print(max_value)
-print(mean_value)
-
-
 ### Plot Frequnecy Domain
 # fig = plt.figure(1, figsize=(8, 8), clear=True);
 # ax  = fig.add_subplot(111);
@@ -235,177 +220,78 @@ print(mean_value)
 # fig.colorbar(im, ax=ax)
 # plt.tight_layout(); plt.pause(0.1); plt.show();
 
-#plt.plot(abs(radar_data[136:137,69:618]).reshape(-1))
-#plt.plot(abs(radar_data[137:138,69:618]).reshape(-1),c = 'r')
-#plt.show()
-
-
 #---------------------------- CFAR Function -----------------------------#
-def create_cfar_filter(num_slow_time, num_fast_time, total_slow_time, total_fast_time):
-    """
-    Create a CFAR filter with averaging over the given dimensions.
-    
-    Parameters:
-        num_slow_time (int): Number of slow time samples to include in the filter.
-        num_fast_time (int): Number of fast time samples to include in the filter.
-        total_slow_time (int): Total number of samples in the radar data.
-        total_fast_time (int): Total number of fast time samples in the radar data.
-        
-    Returns:
-        np.ndarray: Zero-padded CFAR filter.
-    """
-    # Initialize the CFAR filter with ones
-    cfar_filter = np.ones((num_slow_time, num_fast_time))
-    
-    # Normalize the filter to have average values
-    cfar_filter /= (num_slow_time * num_fast_time)
-    
-    # Zero-pad the filter to match the dimensions of the radar data FFT
-    padded_filter = np.zeros((total_slow_time, total_fast_time))
-    padded_filter[:num_slow_time, :num_fast_time] = cfar_filter
+def create_mask(size, num_guard_cells=3, num_averaging_cells=10):
 
-    return padded_filter
+    mask = np.zeros((size, 1))
+    center = num_guard_cells + num_averaging_cells
+    
+    mask[center - num_guard_cells - num_averaging_cells:center - num_guard_cells] = 1
+    mask[center + num_guard_cells + 1:center + num_guard_cells + 1 + num_averaging_cells] = 1
+    
+    mask /= (2 * num_averaging_cells)
+    
+    return mask
+    
+def cfar_1d(radar_data, cfar_mask, threshold_multiplier=1.5):
+    rows, cols = radar_data.shape
+    threshold_map = np.zeros_like(radar_data)
 
+    padded_mask = np.pad(cfar_mask, (0, cols - len(cfar_mask)), 'constant')
+    
+    fft_data = np.fft.fft2(radar_data)
+    fft_mask = np.fft.fft2(padded_mask.reshape(-1, 1), s=radar_data.shape)
+    fft_mask = np.resize(fft_mask, fft_data.shape)
+    fft_threshold = fft_data * fft_mask
 
-# def create_cfar_filter(total_slow_time, total_fast_time, num_guard_cells, num_averaging_cells, cut_position_slow=None):
-#     """
-#     Create a CFAR filter with specified number of averaging cells and guard cells around the CUT.
+    threshold_map = np.real(np.fft.ifft2(fft_threshold))
+    threshold_map *= threshold_multiplier
     
-#     Parameters:
-#         total_slow_time (int): Total number of slow time samples in the radar data.
-#         total_fast_time (int): Total number of fast time samples in the radar data.
-#         num_guard_cells (int): Total number of guard cells to be split evenly around the CUT.
-#         num_averaging_cells (int): Number of averaging cells on either side of the guard cells.
-#         cut_position_slow (int): Optional parameter to specify the slow time position of the CUT. If None, defaults to the center.
-    
-#     Returns:
-#         np.ndarray: Zero-padded CFAR filter with CUT, guard cells, and averaging cells marked.
-#     """
-#     # Initialize the CFAR filter with zeros
-#     padded_filter = np.zeros((total_slow_time, total_fast_time))
-    
-#     # Center or fixed position for the CUT
-#     cut_slow = cut_position_slow if cut_position_slow is not None else total_slow_time // 2
-#     cut_fast = total_fast_time // 2
+    return threshold_map
 
-#     # Number of guard cells on either side of the CUT
-#     num_guard_side = num_guard_cells // 2
-    
-#     # Define the CUT
-#     start_cut_fast = cut_fast
-#     end_cut_fast = cut_fast + 1  # CUT is 1 fast time unit in width
-#     padded_filter[cut_slow, start_cut_fast:end_cut_fast] = 50  # Mark CUT with a distinct value (e.g., 50)
-    
-#     # Define the guard cells
-#     start_guard_fast = cut_fast - num_guard_side
-#     end_guard_fast = cut_fast + num_guard_side + 1  # +1 to include CUT in guard cells
-    
-#     # Ensure guard cells are within bounds
-#     start_guard_fast = max(start_guard_fast, 0)
-#     end_guard_fast = min(end_guard_fast, total_fast_time)
-    
-#     # Set guard cells
-#     padded_filter[cut_slow, start_guard_fast:end_guard_fast] = 1.5  # Mark guard cells with a distinct value (e.g., 1.5)
-    
-#     # Define the averaging cells
-#     start_avg_fast = start_guard_fast - num_averaging_cells
-#     end_avg_fast = end_guard_fast + num_averaging_cells
-    
-#     # Ensure averaging cells are within bounds
-#     start_avg_fast = max(start_avg_fast, 0)
-#     end_avg_fast = min(end_avg_fast, total_fast_time)
-    
-#     # Set averaging cells
-#     padded_filter[cut_slow, start_avg_fast:start_guard_fast] = 1  # Averaging cells (left of guard cells)
-#     padded_filter[cut_slow, end_guard_fast:end_avg_fast] = 1     # Averaging cells (right of guard cells)
-    
-#     return padded_filter
+def detect_targets(radar_data, threshold_map):
+    return radar_data > threshold_map
 
-
-
-def apply_cfar_filter(num_slow_time, num_fast_time,radar_data, cfar_filter):
-    """
-    Apply the CFAR filter to the radar data using FFT and inverse FFT.
-    
-    Parameters:
-        radar_data (np.ndarray): The raw radar data.
-        cfar_filter (np.ndarray): The CFAR filter to apply.
-        
-    Returns:
-        np.ndarray: The filtered radar data.
-    """
-    # FFT of the radar data
-    radar_data_fft = np.fft.fft2(radar_data)
-    
-    # # Zero-pad the CFAR filter to match the dimensions of radar_data_fft
-    # padded_filter = create_cfar_filter(radar_data.shape[0], radar_data.shape[1], 
-    #                                    num_guard_cells=550, num_averaging_cells=100)
-     # Zero-pad the CFAR filter to match the dimensions of radar_data_fft
-    padded_filter = create_cfar_filter(num_slow_time,num_fast_time,radar_data.shape[0], radar_data.shape[1])
-    
-    # FFT of the CFAR filter
-    filter_fft = np.fft.fft2(padded_filter)
-    
-    # Apply the filter in the frequency domain
-    filtered_data_fft = radar_data_fft * filter_fft
-    
-    # Inverse FFT to get back to the time domain
-    filtered_data = np.fft.ifft2(filtered_data_fft).real
-    
-    return filtered_data
 
 #------------------------ Apply CFAR filtering --------------------------------
 
-# Parameters for the CFAR filter
-num_slow_time = 1
-num_fast_time = 550
-total_slow_time = Test_slice.shape[0]
-total_fast_time = Test_slice.shape[1]
-num_guard_cells = 550
-num_averaging_cells = 100
+# Example radar data dimensions (assuming radar_data is already defined)
+fast_time_size = radar_data.shape[1]  # Extract the fast time dimension
+slow_time_size = radar_data.shape[0]  # Extract the slow time dimension
 
-# Create the CFAR filter
-# cfar_filter = create_cfar_filter(total_slow_time, total_fast_time, num_guard_cells=num_guard_cells, num_averaging_cells=num_averaging_cells)
+# Create vertical CFAR mask
+cfar_mask = create_mask(slow_time_size)
+thres_map = cfar_1d(radar_data,cfar_mask)
+# targets = detect_targets(radar_data, thres_map)
 
-# Create the CFAR filter
-cfar_filter = create_cfar_filter(num_slow_time, num_fast_time,total_slow_time, total_fast_time)
-
-# Plot the CFAR filter
-plt.figure(figsize=(10, 10))
-plt.imshow(cfar_filter, interpolation='none', aspect='auto')
-plt.title('CFAR Filter with CUT, Guard Cells, and Averaging Cells')
+# Plot the CFAR Mask
+plt.figure(figsize=(2, 10))
+plt.imshow(thres_map, interpolation='none', aspect='auto')
+plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
 plt.xlabel('Fast Time')
 plt.ylabel('Slow Time')
 plt.colorbar(label='Filter Amplitude')
 plt.show()
 
-# Apply CFAR filter to the radar data
-filtered_radar_data = apply_cfar_filter(num_slow_time,num_fast_time,Test_slice, cfar_filter)
+# fig, ax = plt.subplots(1, 3, figsize=(24, 8))
 
-# Compare original and filtered data point by point
-comparison_data = np.where(Test_slice > filtered_radar_data, Test_slice, filtered_radar_data)
+# ax[0].imshow(cfar_mask, aspect='auto', interpolation='none', origin='lower')
+# ax[0].set_title('Original Radar Data', fontweight='bold')
+# ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
 
-# Plot original, filtered, and comparison data
-fig, ax = plt.subplots(1, 3, figsize=(24, 8))
+# ax[1].imshow(np.abs(thres_map), aspect='auto', interpolation='none', origin='lower')
+# ax[1].set_title('Threshold Values', fontweight='bold')
+# ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
 
-ax[0].imshow(np.abs(Test_slice), aspect='auto', interpolation='none', origin='lower')
-ax[0].set_title('Original Radar Data', fontweight='bold')
-ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
-ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
+# ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none', origin='lower')
+# ax[2].set_title('After CFAR', fontweight='bold')
+# ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
 
-ax[1].imshow(np.abs(filtered_radar_data), aspect='auto', interpolation='none', origin='lower')
-ax[1].set_title('Filtered Radar Data', fontweight='bold')
-ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
-ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-ax[2].imshow(np.abs(comparison_data), aspect='auto', interpolation='none', origin='lower')
-ax[2].set_title('Comparison Data', fontweight='bold')
-ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
-ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-plt.tight_layout()
-plt.show()
-
+# plt.tight_layout()
+# plt.show()
 
 
 
