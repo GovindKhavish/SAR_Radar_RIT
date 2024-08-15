@@ -118,7 +118,7 @@ sent1_ephe  = l0file.ephemeris
 
 #------------------------- 3. Extract Data -----------------------------#
 ### 3.1 - Select Packets to Process
-selected_burst  = 57;
+selected_burst  = 9;
 
 print("Into selection mode\n")
 
@@ -175,14 +175,14 @@ print("Starting to graph")
 # ax.set_ylabel('Slow Time (cross range)', fontweight='bold');
 # plt.tight_layout(); plt.pause(0.1); plt.show();
 
-### Pulse Amplitude Graphing
-#pulse_amp = np.sqrt((np.real(RFI_slice)**2) + (np.imag(RFI_slice)**2))
-#plt.plot(pulse_amp.reshape(-1))
-#plt.show()
+# ## Pulse Amplitude Graphing
+# pulse_amp = np.sqrt((np.real(RFI_slice)**2) + (np.imag(RFI_slice)**2))
+# plt.plot(pulse_amp.reshape(-1))
+# plt.show()
 
 
-### Phase Modulation Graphing
-#phase_mod = np.arctan(np.imag(radar_data[136:137,:700])/np.real(radar_data[136:137,:700]))
+# ## Phase Modulation Graphing
+# phase_mod = np.arctan(np.imag(radar_data[136:137,:700])/np.real(radar_data[136:137,:700]))
 # plt.plot(phase_mod.reshape(-1))
 # plt.show()
 
@@ -190,8 +190,6 @@ print("Starting to graph")
 # plt.plot(abs(radar_data[136:137,:700]).reshape(-1),label='Interference')
 # plt.plot(abs(radar_data[137:138,:700]).reshape(-1),c = 'r',label='Noise')
 # plt.show()
-
-
 #-------------------- 4. Convert data to 2D frequency domain-----------------------#
 # FFT entire matrix
 #radar_data = np.fft.fft2(radar_data)
@@ -218,7 +216,19 @@ print("Starting to graph")
 # plt.tight_layout(); plt.pause(0.1); plt.show();
 
 #---------------------------- CFAR Function -----------------------------#
-def create_mask(size, num_guard_cells=3, num_averaging_cells=10):
+def create_hori_mask(size, num_guard_cells=3, num_averaging_cells=10):
+
+    mask = np.zeros((1,size))
+    center = num_guard_cells + num_averaging_cells
+    
+    mask[0, center - num_guard_cells - num_averaging_cells:center - num_guard_cells] = 1
+    mask[0, center + num_guard_cells + 1:center + num_guard_cells + 1 + num_averaging_cells] = 1
+    
+    mask /= (2 * num_averaging_cells)
+    
+    return mask
+
+def create_vert_mask(size, num_guard_cells=10, num_averaging_cells=10):
 
     mask = np.zeros((size, 1))
     center = num_guard_cells + num_averaging_cells
@@ -230,28 +240,34 @@ def create_mask(size, num_guard_cells=3, num_averaging_cells=10):
     
     return mask
 
-def create_padded_mask(radar_data,cfar_mask):
+def create_padded_mask(radar_data,cfar_mask,orientation):
     rows = radar_data.shape[0]
     cols = radar_data.shape[1]
 
     temp_mask = np.zeros((rows,cols))
-    temp_mask[:cfar_mask.shape[0], 0:cfar_mask.shape[1]] = cfar_mask
+    # 1 is for vertical
+    if (orientation == 1):
+        temp_mask[:cfar_mask.shape[0], 0:cfar_mask.shape[1]] = cfar_mask
+    else:
+        temp_mask[0:cfar_mask.shape[0], :] = cfar_mask
+
     return temp_mask
     
-def cfar_1d(radar_data, cfar_mask, threshold_multiplier=1.5):
+def cfar_1d(radar_data, cfar_mask,orientation, threshold_multiplier=19.605):
     rows, cols = radar_data.shape
     threshold_map = np.zeros_like(radar_data)
 
-    padded_mask = create_padded_mask(radar_data,cfar_mask)
+    padded_mask = create_padded_mask(radar_data,cfar_mask,orientation)
 
     fft_data = np.fft.fft2(radar_data)
     fft_mask = np.fft.fft2(padded_mask)
     
     fft_threshold = fft_data * fft_mask
     
-    threshold_map = np.real(np.fft.ifft2(fft_threshold))
-    
+    threshold_map = np.abs(np.fft.ifft2(fft_threshold))
+    #print(np.nanmax(threshold_map))
     threshold_map *= threshold_multiplier
+    #print(np.nanmax(threshold_map))
     
     return threshold_map
 
@@ -259,32 +275,58 @@ def detect_targets(radar_data, threshold_map):
     target_map = np.zeros_like(radar_data)
     len_col = radar_data.shape[1]
     len_row = radar_data.shape[0]
+    hits = 0
 
     for row in range(len_row):
 
         for col in range(len_col):
 
-            if(radar_data[row,col] > threshold_map[row,col]):
-                target_map[row,col] = radar_data[row,col]
+            if(np.abs(radar_data[row,col]) > threshold_map[row,col]):
+                #target_map[row,col] = radar_data[row,col]
+                target_map[row,col] = 1
+                hits = hits+1
+            
+            else:
+                target_map[row,col] = 0
+    print(hits)
 
     return target_map
 
 
 #------------------------ Apply CFAR filtering --------------------------------
 
-# Example radar data dimensions (assuming radar_data is already defined)
-fast_time_size = radar_data.shape[1]  # Extract the fast time dimension
-slow_time_size = radar_data.shape[0]  # Extract the slow time dimension
+# Radar data dimensions
+#radar_data = radar_data[0:200,10000:15000]
+fast_time_size = radar_data.shape[1]  
+slow_time_size = radar_data.shape[0]
 
 # Create vertical CFAR mask
-cfar_mask = create_mask(slow_time_size)
-padded_mask = create_padded_mask(radar_data,cfar_mask)
-thres_map = cfar_1d(radar_data,cfar_mask)
+cfar_mask = create_vert_mask(slow_time_size)
+padded_mask = create_padded_mask(radar_data,cfar_mask,1)
+
+# Create horizontal CFAR mask
+#cfar_mask = create_hori_mask(fast_time_size)
+#padded_mask = create_padded_mask(radar_data,cfar_mask,1)
+
+thres_map = cfar_1d(radar_data,cfar_mask,1)
+max_radar = np.max(np.abs(radar_data))
+min_radar = np.min(np.abs(radar_data))
+median_radar = np.median(np.abs(radar_data))
+
+max_thres = np.max(thres_map)
+min_thres = np.min(thres_map)
+median_thres = np.median(thres_map)
+print("Radar Data - Max: ", max_radar, ", Min: ", min_radar, ", Median: ", median_radar)
+print("Threshold Map - Max: ", max_thres, ", Min: ", min_thres, ", Median: ", median_thres)
+
+#print("Threshold map value: " + str(thres_map[10, 20]))
+#print("Radar Data: " + str(np.abs(radar_data[10, 20])))
+
 targets = detect_targets(radar_data, thres_map)
 
 # # Plot the CFAR Mask
 # plt.figure(figsize=(2, 10))
-# plt.imshow(targets, interpolation='none', aspect='auto')
+# plt.imshow(padded_mask, interpolation='none', aspect='auto')
 # plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
 # plt.xlabel('Fast Time')
 # plt.ylabel('Slow Time')
@@ -293,7 +335,7 @@ targets = detect_targets(radar_data, thres_map)
 
 fig, ax = plt.subplots(1, 3, figsize=(24, 8))
 
-ax[0].imshow(abs(radar_data), aspect='auto', interpolation='none', origin='lower')
+ax[0].imshow(abs(radar_data), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
 ax[0].set_title('Original Radar Data', fontweight='bold')
 ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
 ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
@@ -303,13 +345,38 @@ ax[1].set_title('Threshold Values', fontweight='bold')
 ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
 ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
 
-ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none', origin='lower')
+ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none',origin='lower')
 ax[2].set_title('After CFAR', fontweight='bold')
 ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
 ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
 
 plt.tight_layout()
 plt.show()
+
+# fig = plt.figure(1, figsize=(8, 8), clear=True);
+# ax  = fig.add_subplot(111);
+# ax.imshow(np.abs(Test_slice), aspect='auto', interpolation='none', origin='lower');
+# #ax.imshow(np.abs(radar_data_raw), aspect='auto', interpolation='none',); #origin='lower');
+# ax.set_title(f'Sea North of Ireland- {headline} Raw I/Q Sensor Output', fontweight='bold');
+# ax.set_xlabel('Fast Time (down range)', fontweight='bold');
+# ax.set_ylabel('Slow Time (cross range)', fontweight='bold');
+# plt.tight_layout(); plt.pause(0.1); plt.show();
+
+# ## Pulse Amplitude Graphing
+# pulse_amp = np.sqrt((np.real(RFI_slice)**2) + (np.imag(RFI_slice)**2))
+# plt.plot(pulse_amp.reshape(-1))
+# plt.show()
+
+
+# ## Phase Modulation Graphing
+# phase_mod = np.arctan(np.imag(radar_data[136:137,:700])/np.real(radar_data[136:137,:700]))
+# plt.plot(phase_mod.reshape(-1))
+# plt.show()
+
+
+# plt.plot(abs(radar_data[136:137,:700]).reshape(-1),label='Interference')
+# plt.plot(abs(radar_data[137:138,:700]).reshape(-1),c = 'r',label='Noise')
+# plt.show()
 
 
 
