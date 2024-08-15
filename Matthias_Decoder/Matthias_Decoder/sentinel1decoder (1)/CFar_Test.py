@@ -76,8 +76,9 @@ import sentinel1decoder;
 #filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
 
 # Mipur VH
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+filename = 's1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 
 inputfile = filepath+filename
@@ -216,6 +217,9 @@ print("Starting to graph")
 # plt.tight_layout(); plt.pause(0.1); plt.show();
 
 #---------------------------- CFAR Function -----------------------------#
+
+### Masks ###
+
 def create_hori_mask(size, num_guard_cells=3, num_averaging_cells=10):
 
     mask = np.zeros((1,size))
@@ -240,6 +244,34 @@ def create_vert_mask(size, num_guard_cells=10, num_averaging_cells=10):
     
     return mask
 
+
+def create_2d_mask(vertical_guard_cells, vertical_avg_cells, horizontal_guard_cells, horizontal_avg_cells):
+    # Calculate the total size for the mask
+    vertical_size = 2 * (vertical_guard_cells + vertical_avg_cells) + 1
+    horizontal_size = 2 * (horizontal_guard_cells + horizontal_avg_cells) + 1
+    
+    # Initialize a 2D mask of zeros
+    mask = np.zeros((vertical_size, horizontal_size))
+    
+    # Calculate the center of the mask (CUT position)
+    center_row = vertical_guard_cells + vertical_avg_cells
+    center_col = horizontal_guard_cells + horizontal_avg_cells
+    
+    # Set the averaging cells
+    mask[:center_row - vertical_guard_cells, :] = 1
+    mask[center_row + vertical_guard_cells + 1:, :] = 1
+    mask[:, :center_col - horizontal_guard_cells] = 1
+    mask[:, center_col + horizontal_guard_cells + 1:] = 1
+    
+    # Guard cells and CUT are kept as 0 (already initialized as 0)
+    mask[center_row - vertical_guard_cells:center_row + vertical_guard_cells + 1, 
+         center_col - horizontal_guard_cells:center_col + horizontal_guard_cells + 1] = 0
+    
+    return mask
+
+
+### Padding ###
+
 def create_padded_mask(radar_data,cfar_mask,orientation):
     rows = radar_data.shape[0]
     cols = radar_data.shape[1]
@@ -252,6 +284,19 @@ def create_padded_mask(radar_data,cfar_mask,orientation):
         temp_mask[0:cfar_mask.shape[0], :] = cfar_mask
 
     return temp_mask
+
+def create_2d_padded_mask(radar_data, cfar_mask):
+    # Get the dimensions of the radar data and CFAR mask
+    radar_rows, radar_cols = radar_data.shape
+    mask_rows, mask_cols = cfar_mask.shape
+
+    # Initialize the padded mask with zeros
+    padded_mask = np.zeros((radar_rows, radar_cols))
+
+    # Place the CFAR mask in the top-left corner of the padded mask
+    padded_mask[:mask_rows, :mask_cols] = cfar_mask
+
+    return padded_mask
     
 def cfar_1d(radar_data, cfar_mask,orientation, threshold_multiplier=19.605):
     rows, cols = radar_data.shape
@@ -270,6 +315,9 @@ def cfar_1d(radar_data, cfar_mask,orientation, threshold_multiplier=19.605):
     #print(np.nanmax(threshold_map))
     
     return threshold_map
+
+
+### Detection ###
 
 def detect_targets(radar_data, threshold_map):
     target_map = np.zeros_like(radar_data)
@@ -301,57 +349,62 @@ fast_time_size = radar_data.shape[1]
 slow_time_size = radar_data.shape[0]
 
 # Create vertical CFAR mask
-cfar_mask = create_vert_mask(slow_time_size)
-padded_mask = create_padded_mask(radar_data,cfar_mask,1)
+# cfar_mask = create_vert_mask(slow_time_size)
+# padded_mask = create_padded_mask(radar_data,cfar_mask,1)
 
 # Create horizontal CFAR mask
 #cfar_mask = create_hori_mask(fast_time_size)
 #padded_mask = create_padded_mask(radar_data,cfar_mask,1)
 
-thres_map = cfar_1d(radar_data,cfar_mask,1)
+# Create 2D Mask
+#Width is low time, legnth is fast time
+cfar_mask = create_2d_mask(3,10,4,15)
+padded_mask = create_2d_padded_mask(radar_data,cfar_mask)
+
+#thres_map = cfar_1d(radar_data,cfar_mask,1)
 max_radar = np.max(np.abs(radar_data))
 min_radar = np.min(np.abs(radar_data))
 median_radar = np.median(np.abs(radar_data))
 
-max_thres = np.max(thres_map)
-min_thres = np.min(thres_map)
-median_thres = np.median(thres_map)
-print("Radar Data - Max: ", max_radar, ", Min: ", min_radar, ", Median: ", median_radar)
-print("Threshold Map - Max: ", max_thres, ", Min: ", min_thres, ", Median: ", median_thres)
+#max_thres = np.max(thres_map)
+#min_thres = np.min(thres_map)
+#median_thres = np.median(thres_map)
+#print("Radar Data - Max: ", max_radar, ", Min: ", min_radar, ", Median: ", median_radar)
+#print("Threshold Map - Max: ", max_thres, ", Min: ", min_thres, ", Median: ", median_thres)
 
 #print("Threshold map value: " + str(thres_map[10, 20]))
 #print("Radar Data: " + str(np.abs(radar_data[10, 20])))
 
-targets = detect_targets(radar_data, thres_map)
+#targets = detect_targets(radar_data, thres_map)
 
-# # Plot the CFAR Mask
-# plt.figure(figsize=(2, 10))
-# plt.imshow(padded_mask, interpolation='none', aspect='auto')
-# plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
-# plt.xlabel('Fast Time')
-# plt.ylabel('Slow Time')
-# plt.colorbar(label='Filter Amplitude')
-# plt.show()
-
-fig, ax = plt.subplots(1, 3, figsize=(24, 8))
-
-ax[0].imshow(abs(radar_data), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
-ax[0].set_title('Original Radar Data', fontweight='bold')
-ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
-ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-ax[1].imshow(np.abs(thres_map), aspect='auto', interpolation='none', origin='lower')
-ax[1].set_title('Threshold Values', fontweight='bold')
-ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
-ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none',origin='lower')
-ax[2].set_title('After CFAR', fontweight='bold')
-ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
-ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
-
-plt.tight_layout()
+# Plot the CFAR Mask
+plt.figure(figsize=(2, 10))
+plt.imshow(padded_mask, interpolation='none', aspect='auto')
+plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
+plt.xlabel('Fast Time')
+plt.ylabel('Slow Time')
+plt.colorbar(label='Filter Amplitude')
 plt.show()
+
+# fig, ax = plt.subplots(1, 3, figsize=(24, 8))
+
+# ax[0].imshow(abs(radar_data), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
+# ax[0].set_title('Original Radar Data', fontweight='bold')
+# ax[0].set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax[0].set_ylabel('Slow Time (cross range)', fontweight='bold')
+
+# ax[1].imshow(np.abs(thres_map), aspect='auto', interpolation='none', origin='lower')
+# ax[1].set_title('Threshold Values', fontweight='bold')
+# ax[1].set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax[1].set_ylabel('Slow Time (cross range)', fontweight='bold')
+
+# ax[2].imshow(np.abs(targets), aspect='auto', interpolation='none',origin='lower')
+# ax[2].set_title('After CFAR', fontweight='bold')
+# ax[2].set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax[2].set_ylabel('Slow Time (cross range)', fontweight='bold')
+
+# plt.tight_layout()
+# plt.show()
 
 # fig = plt.figure(1, figsize=(8, 8), clear=True);
 # ax  = fig.add_subplot(111);
