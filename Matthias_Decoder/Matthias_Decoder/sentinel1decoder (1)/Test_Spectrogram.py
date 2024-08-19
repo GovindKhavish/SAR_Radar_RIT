@@ -110,43 +110,121 @@ radar_data = l0file.get_burst_data(selected_burst)
 # radar_data[slow time, fast time]
 
 
+def create_spectrogram(radar_data, range_bin, window_size, PRI):
+    """
+    Creates a spectrogram from radar data for a specified range bin.
 
-# Select one row (range line) from the 2D radar data
-selected_row_index = 179  # Change this to the index of the range line you want to display
-range_line = radar_data[selected_row_index, :]
+    Parameters:
+    radar_data (2D np.array): The radar data with slow time on the vertical axis and fast time on the horizontal axis.
+    range_bin (int): The specific fast time (column) to analyze.
+    window_size (int): The number of slow times to include in the window (default is 3).
+    PRI (float): The Pulse Repetition Interval in seconds (default is 0.3 seconds).
 
-# Compute the spectrogram for the selected range line
-frequencies, times, Sxx = spectrogram(range_line, fs=1.0, nperseg=256)
+    Returns:
+    spectrogram (2D np.array): The calculated spectrogram (magnitude of FFT).
+    time_axis (1D np.array): The time values corresponding to the spectrogram.
+    freq (1D np.array): The frequency values corresponding to the spectrogram.
+    """
+    # Validate range_bin
+    if range_bin >= radar_data.shape[1]:
+        raise ValueError(f"range_bin {range_bin} is out of bounds for radar_data with {radar_data.shape[1]} fast time bins.")
 
-# Create a figure with three subplots side by side
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(24, 8), clear=True)
+    spectrogram = []
+
+    # Loop through the slow time axis with the specified window size
+    for i in range(radar_data.shape[0] - window_size + 1):
+        # Extract the window of data for the selected range bin
+        window_data = radar_data[i:i + window_size, range_bin]
+        
+        # Perform FFT along the slow time axis for the selected range bin
+        fft_result = np.fft.fft(window_data)
+        
+        # Append the FFT result (magnitude) to the spectrogram
+        spectrogram.append(np.abs(fft_result))
+
+    # Convert the list to a numpy array (rows correspond to different time windows)
+    spectrogram = np.array(spectrogram).T  # Transpose to have frequency on the y-axis
+
+    # Generate time axis based on the center of each window
+    time_axis = np.arange(window_size // 2, radar_data.shape[0] - window_size // 2) * PRI
+
+    # Frequency corresponding to the FFT (Hz)
+    freq = np.fft.fftfreq(window_size, d=PRI)
+
+    return spectrogram, time_axis, freq
+
+range_bin = 10
+window_size = 3
+PRI = 0.3
+
+spectrogram, time_axis, freq = create_spectrogram(radar_data, range_bin, window_size,PRI)
+
+# Plot the spectrogram using imshow
+plt.figure(figsize=(10, 6))
+plt.imshow(abs(radar_data[:,range_bin:range_bin+1]), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
+plt.colorbar(label='Amplitude')
+plt.xlabel('Time (s)')
+plt.ylabel('Slow Time (cross range')
+plt.title(f'Spectrogram for Range Bin {range_bin}')
+
+# Plot the original radar data and the spectrogram side by side
+plt.figure(figsize=(14, 6))
 
 # Plot the original radar data
-cax = ax1.imshow(abs(radar_data[selected_row_index-5:selected_row_index+5,:]), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
-ax1.set_title('Original Radar Data', fontweight='bold')
-ax1.set_xlabel('Fast Time (down range)', fontweight='bold')
-ax1.set_ylabel('Slow Time (cross range)', fontweight='bold')
-plt.colorbar(cax, ax=ax1, label='Magnitude')
+plt.subplot(1, 2, 1)
+plt.plot(np.arange(len(radar_data[:, range_bin])) * PRI, np.abs(radar_data[:, range_bin]))
+plt.title('Original Radar Data for Range Bin 10')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
 
-# Plot the selected range line from the radar data using imshow
-ax2.imshow(abs(range_line)[np.newaxis, :], aspect='auto', origin='lower')
-ax2.set_title(f'Range Line {selected_row_index} from Radar Data', fontweight='bold')
-ax2.set_xlabel('Fast Time (down range)', fontweight='bold')
-ax2.set_ylabel('Amplitude', fontweight='bold')
-ax2.set_xticks([])  # Remove x ticks
-ax2.set_yticks([])  # Remove y ticks
+# Plot the spectrogram using imshow
+plt.subplot(1, 2, 2)
+plt.imshow(spectrogram, aspect='auto', extent=[time_axis[0], time_axis[-1], freq[-1], freq[0]], cmap='viridis')
+plt.colorbar(label='Amplitude')
+plt.xlabel('Time (s)')
+plt.ylabel('Frequency (Hz)')
+plt.title(f'Spectrogram for Range Bin {range_bin}')
 
-# Plot the spectrogram of the selected range line
-im = ax3.imshow(10 * np.log10(Sxx), aspect='auto', interpolation='none', origin='lower', 
-                extent=[times.min(), times.max(), frequencies.min(), frequencies.max()])
-ax3.set_title('Spectrogram of Selected Range Line', fontweight='bold')
-ax3.set_xlabel('Time [s]', fontweight='bold')
-ax3.set_ylabel('Frequency [Hz]', fontweight='bold')
-plt.colorbar(im, ax=ax3, label='Intensity [dB]')
-
-# Adjust layout and display the plot
 plt.tight_layout()
-plt.pause(0.1)
 plt.show()
+
+
+# # Select one row (range line) from the 2D radar data
+# selected_row_index = 179  # Change this to the index of the range line you want to display
+# range_line = radar_data[selected_row_index, :]
+
+# # Compute the spectrogram for the selected range line
+# frequencies, times, Sxx = spectrogram(range_line, fs=1.0, nperseg=256)
+
+# # Create a figure with three subplots side by side
+# fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(24, 8), clear=True)
+
+# # Plot the original radar data
+# cax = ax1.imshow(abs(radar_data[selected_row_index-5:selected_row_index+5,:]), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
+# ax1.set_title('Original Radar Data', fontweight='bold')
+# ax1.set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax1.set_ylabel('Slow Time (cross range)', fontweight='bold')
+# plt.colorbar(cax, ax=ax1, label='Magnitude')
+
+# # Plot the selected range line from the radar data using imshow
+# ax2.imshow(abs(range_line)[np.newaxis, :], aspect='auto', origin='lower')
+# ax2.set_title(f'Range Line {selected_row_index} from Radar Data', fontweight='bold')
+# ax2.set_xlabel('Fast Time (down range)', fontweight='bold')
+# ax2.set_ylabel('Amplitude', fontweight='bold')
+# ax2.set_xticks([])  # Remove x ticks
+# ax2.set_yticks([])  # Remove y ticks
+
+# # Plot the spectrogram of the selected range line
+# im = ax3.imshow(10 * np.log10(Sxx), aspect='auto', interpolation='none', origin='lower', 
+#                 extent=[times.min(), times.max(), frequencies.min(), frequencies.max()])
+# ax3.set_title('Spectrogram of Selected Range Line', fontweight='bold')
+# ax3.set_xlabel('Time [s]', fontweight='bold')
+# ax3.set_ylabel('Frequency [Hz]', fontweight='bold')
+# plt.colorbar(im, ax=ax3, label='Intensity [dB]')
+
+# # Adjust layout and display the plot
+# plt.tight_layout()
+# plt.pause(0.1)
+# plt.show()
 
 
