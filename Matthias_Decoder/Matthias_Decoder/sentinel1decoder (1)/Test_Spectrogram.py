@@ -109,63 +109,53 @@ radar_data = l0file.get_burst_data(selected_burst)
 # Calculate Spectrogram for each row (Slow Time) of the radar_data
 # radar_data[slow time, fast time]
 
-
 def create_spectrogram(radar_data, range_bin, window_size, PRI):
-    """
-    Creates a spectrogram from radar data for a specified range bin.
-
-    Parameters:
-    radar_data (2D np.array): The radar data with slow time on the vertical axis and fast time on the horizontal axis.
-    range_bin (int): The specific fast time (column) to analyze.
-    window_size (int): The number of slow times to include in the window (default is 3).
-    PRI (float): The Pulse Repetition Interval in seconds (default is 0.3 seconds).
-
-    Returns:
-    spectrogram (2D np.array): The calculated spectrogram (magnitude of FFT).
-    time_axis (1D np.array): The time values corresponding to the spectrogram.
-    freq (1D np.array): The frequency values corresponding to the spectrogram.
-    """
-    # Validate range_bin
     if range_bin >= radar_data.shape[1]:
         raise ValueError(f"range_bin {range_bin} is out of bounds for radar_data with {radar_data.shape[1]} fast time bins.")
 
     spectrogram = []
+    t_axis = []
+    padding_size = 122
 
-    # Loop through the slow time axis with the specified window size
-    for i in range(radar_data.shape[0] - window_size + 1):
-        # Extract the window of data for the selected range bin
-        window_data = radar_data[i:i + window_size, range_bin]
-        
-        # Perform FFT along the slow time axis for the selected range bin
-        fft_result = np.fft.fft(window_data)
-        
-        # Append the FFT result (magnitude) to the spectrogram
+    window_length = window_size + padding_size
+    hann_window = np.hanning(window_size*2) 
+
+    for i in range(window_size,radar_data.shape[0] - window_size + 1):
+        window_data = radar_data[i-window_size:i + window_size, range_bin]
+        window_data = window_data * hann_window
+        padded_window_data = np.concatenate((window_data, np.zeros(padding_size)))
+        fft_result = np.fft.fft(padded_window_data)
         spectrogram.append(np.abs(fft_result))
 
-    # Convert the list to a numpy array (rows correspond to different time windows)
-    spectrogram = np.array(spectrogram).T  # Transpose to have frequency on the y-axis
+    spectrogram = np.array(spectrogram).T 
+    
+    num_points = spectrogram.shape[1]  
+    total_time = (num_points - 1) * PRI  
+    t_axis = np.linspace(0, total_time, num_points)
 
-    # Generate time axis based on the center of each window
-    time_axis = np.arange(window_size // 2, radar_data.shape[0] - window_size // 2) * PRI
-
-    # Frequency corresponding to the FFT (Hz)
-    freq = np.fft.fftfreq(window_size, d=PRI)
-
-    return spectrogram, time_axis, freq
+    return spectrogram, t_axis
 
 range_bin = 10
 window_size = 3
-PRI = 0.3
+PRI = 0.00275 # 2.75 miliseconds
 
-spectrogram, time_axis, freq = create_spectrogram(radar_data, range_bin, window_size,PRI)
+spectrogram, t_axis = create_spectrogram(radar_data, range_bin, window_size,PRI)
 
 # Plot the spectrogram using imshow
 plt.figure(figsize=(10, 6))
-plt.imshow(abs(radar_data[:,range_bin:range_bin+1]), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
+plt.imshow(spectrogram, aspect='auto', extent=[t_axis[0], t_axis[-1],0, spectrogram.shape[1]], origin='lower')
 plt.colorbar(label='Amplitude')
 plt.xlabel('Time (s)')
-plt.ylabel('Slow Time (cross range')
+plt.ylabel('Frequency (Hz)')
 plt.title(f'Spectrogram for Range Bin {range_bin}')
+
+# # Plot the spectrogram using imshow
+# plt.figure(figsize=(10, 6))
+# plt.imshow(abs(radar_data[:,range_bin:range_bin+1]), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
+# plt.colorbar(label='Amplitude')
+# plt.xlabel('Time (s)')
+# plt.ylabel('Slow Time (cross range')
+# plt.title(f'Spectrogram for Range Bin {range_bin}')
 
 # Plot the original radar data and the spectrogram side by side
 plt.figure(figsize=(14, 6))
@@ -179,7 +169,7 @@ plt.ylabel('Amplitude')
 
 # Plot the spectrogram using imshow
 plt.subplot(1, 2, 2)
-plt.imshow(spectrogram, aspect='auto', extent=[time_axis[0], time_axis[-1], freq[-1], freq[0]], cmap='viridis')
+plt.imshow(spectrogram, aspect='auto', extent=[t_axis[0], t_axis[-1],0, spectrogram.shape[1]], origin='lower')
 plt.colorbar(label='Amplitude')
 plt.xlabel('Time (s)')
 plt.ylabel('Frequency (Hz)')
@@ -187,7 +177,6 @@ plt.title(f'Spectrogram for Range Bin {range_bin}')
 
 plt.tight_layout()
 plt.show()
-
 
 # # Select one row (range line) from the 2D radar data
 # selected_row_index = 179  # Change this to the index of the range line you want to display
