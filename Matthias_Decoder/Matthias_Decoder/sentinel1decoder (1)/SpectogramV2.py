@@ -93,12 +93,14 @@ bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
 # Select the Burst to Process
-selected_burst = 63
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
     selected_burst += 1
     selection = l0file.get_burst_metadata(selected_burst)
+
+headline = f'Sentinel-1 (burst {selected_burst}): '
 
 # Extract Raw I/Q Sensor Data
 radar_data = l0file.get_burst_data(selected_burst)
@@ -106,114 +108,30 @@ radar_data = l0file.get_burst_data(selected_burst)
 
 # -------------------- Coherent Compression -----------------------------#
 # Parameters
-range_bin = 1500
-num_bins=10
+idx_n = 1500;
+fs = 46918402.800000004;
 
-def coherent_compression(radar_data, range_bin, num_bins):
-    if range_bin - num_bins < 0 or range_bin + num_bins >= radar_data.shape[1]:
-        raise ValueError("Range bin with specified number of bins is out of bounds.")
-
-    len_row = radar_data.shape[0]
-    compressed_radar_data = np.zeros((len_row, 1),dtype=complex)
-
-    for row_idx in range(len_row):
-
-        start_idx = range_bin - num_bins
-        end_idx = range_bin + num_bins + 1
-
-        sum_values = np.sum(radar_data[row_idx, start_idx:end_idx])
-        compressed_radar_data[row_idx, 0] = sum_values
-
-    return compressed_radar_data
-
-compressed_data = coherent_compression(radar_data, range_bin,num_bins)
-
-# Plotting the result
-plt.figure(figsize=(14, 6))
-# plt.subplot(1, 2, 1)
-# #plt.plot(np.abs(compressed_data))
-# plt.imshow(10*np.log10(np.abs(compressed_data)), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
-# plt.colorbar(label='Amplitude')
-# plt.title(f'Coherently Compressed Data for Range Bins {range_bin-num_bins} to {range_bin+num_bins}')
-# plt.ylabel('Slow Time')
-# plt.xlabel('Fast Time')
-
-# plt.subplot(1, 2, 2)
-plt.imshow(10*np.log10(abs(radar_data[:,:])), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
-plt.colorbar(label='Amplitude')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.title('Orginal Data')
-
-#plt.show()
+fig = plt.figure(10, figsize=(6, 6), clear=True);
+ax = fig.add_subplot(111);
+ax.plot(np.abs(radar_data[idx_n,:]), label=f'abs{idx_n}');
+ax.plot(np.real(radar_data[idx_n,:]), label=f'Re{idx_n}');
+ax.plot(np.imag(radar_data[idx_n,:]), label=f'Im{idx_n}');
+ax.legend();
+ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold');
+ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold');
+ax.set_ylabel('|Amplitude|', fontweight='bold');
+plt.tight_layout(); plt.pause(0.1); plt.show();
 
 
-# -------------------- Add Spectrogram Generation -----------------------#
-# Parameters
-window_size = 10
-padding_size = 128 - window_size
-PRI = 0.00275
+fig = plt.figure(11, figsize=(6, 6), clear=True);
+ax = fig.add_subplot(111);
 
-# Calculate Spectrogram for each coloumn (Range bin) of the radar_data
-# radar_data[slow time, fast time]
-
-
-def create_spectrogram(radar_data, range_bin, window_size, PRI, num_bins, padding_size, overlap=0.50):
-
-    #compressed_data = coherent_compression(radar_data, range_bin, num_bins)
-    compressed_data = radar_data
-
-    spectrogram = []
-    
-    shift = int(np.floor(window_size * (1 - overlap)))
-    if shift < 1:
-        shift = 1
-
-    #hamming_window = np.hamming(window_size * 2)
-
-    for i in range(window_size, compressed_data.shape[0] - window_size + 1, shift):
-        window_data = compressed_data[i - window_size:i + window_size, 0]
-        window_data = window_data #* hamming_window 
-        padded_window_data = np.concatenate((window_data, np.zeros(padding_size)))  
-        fft_result = np.fft.fftshift(np.fft.fft(padded_window_data))  
-        spectrogram.append(np.abs(fft_result)) 
-    
-    spectrogram = np.array(spectrogram).T
-    
-    num_points = spectrogram.shape[1]
-    total_time = (num_points - 1) * shift * PRI
-    t_axis = np.linspace(0, total_time, num_points)
-
-    return spectrogram, t_axis
-
-spectrogram, t_axis = create_spectrogram(radar_data, range_bin, window_size, PRI,num_bins,padding_size)
-
-# # # Plotting
-plt.figure(figsize=(14, 6))
-
-# plt.subplot(1, 2, 1)
-# plt.plot(np.arange(len(radar_data[:, range_bin])) * PRI, np.abs(radar_data[:, range_bin]))
-# plt.title(f'Original Radar Data for Range Bin {range_bin}')
-# plt.xlabel('Time (s)')
-# plt.ylabel('Amplitude')
-
-#plt.subplot(1, 2, 2)
-plt.imshow(10*np.log10(spectrogram), aspect='auto', extent=[t_axis[0], t_axis[-1],0, spectrogram.shape[1]], origin='lower')
-plt.colorbar(label='Amplitude')
-plt.xlabel('Time (s)')
-plt.ylabel('Frequency (Hz)')
-plt.title(f'Spectrogram for Range Bin {range_bin}')
-
-# # Plot the spectrogram using imshow
-# plt.figure(figsize=(10, 6))
-# plt.imshow(abs(radar_data[:,range_bin:range_bin+1]), aspect='auto', interpolation='none', origin='lower',vmin=0,vmax=10)
-# plt.colorbar(label='Amplitude')
-# plt.xlabel('Tast Time')
-# plt.ylabel('Slow Time')
-# plt.title(f'Spectrogram for Range Bin {range_bin}')
-
-plt.tight_layout()
-plt.show()
-
-
-
+#scale = 'linear';
+scale = 'dB';
+aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,
+Fc=None, detrend=None, window=np.hanning(256), scale=scale,
+noverlap=200, cmap='Greys');
+ax.set_xlabel('Time [us]', fontweight='bold');
+ax.set_ylabel('Freq [MHz]', fontweight='bold');
+ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold');
+plt.tight_layout(); plt.pause(0.1); plt.show();
