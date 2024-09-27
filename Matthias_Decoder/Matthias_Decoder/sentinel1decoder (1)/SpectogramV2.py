@@ -1,16 +1,3 @@
-##CFar_Test
-
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-### -*- coding: iso-8859-15 -*-
-""" Auswertung Sentianl 1 Raw Data
-
-:Info:
-    Version: 2024.05
-    Author : Matthias Weiß
-"""
-#use this function from one folder up so the import will work :-)
-
 #=========================================================================================
 # _common_imports_v3_py.py ]
 #
@@ -28,6 +15,8 @@ from matplotlib import colors
 import matplotlib.gridspec as gridspec
 from scipy.interpolate import interp1d
 from scipy.signal import spectrogram
+from scipy.signal import windows
+from scipy.signal import butter, filtfilt
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path, PurePath;
@@ -78,8 +67,8 @@ import sentinel1decoder;
 #filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
 
 # Mipur VH
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 inputfile = filepath+filename
@@ -135,3 +124,193 @@ ax.set_xlabel('Time [us]', fontweight='bold');
 ax.set_ylabel('Freq [MHz]', fontweight='bold');
 ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold');
 plt.tight_layout(); plt.pause(0.1); plt.show();
+
+# -------------------- Threshold Function -----------------------------#
+import numpy as np
+import matplotlib.pyplot as plt
+
+def threshold_filter_and_plot(data, threshold_db, fs, title):
+    """
+    Apply a threshold to the input data, zeroing out values below the threshold,
+    and plot the resulting data as a spectrogram.
+
+    Parameters:
+        data (np.ndarray): Input data to apply threshold.
+        threshold_db (float): Threshold value in dB.
+        fs (float): Sampling frequency in Hz.
+        title (str): Title for the spectrogram plot.
+    """
+    # Convert threshold from dB to linear scale for comparison
+    threshold_linear = 10 ** (threshold_db / 10)
+
+    # Zero out values below the threshold
+    filtered_data = np.where(np.abs(data) < threshold_linear, 0, data)
+
+    # Plot the modified data as a spectrogram
+    fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+    _, _, _, im = ax.specgram(filtered_data, 
+                               NFFT=256, 
+                               Fs=fs / 1e6,  # Convert to MHz for plotting
+                               Fc=None, 
+                               detrend=None, 
+                               window=np.hanning(256), 
+                               scale='dB', 
+                               noverlap=200, 
+                               cmap='Greys')
+
+    ax.set_xlabel('Time [μs]', fontweight='bold')
+    ax.set_ylabel('Freq [MHz]', fontweight='bold')
+    ax.set_title(title, fontweight='bold')
+    ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+    plt.colorbar(im, ax=ax, label='Intensity [dB]')  # Use the correct object for colorbar
+    plt.tight_layout()
+    plt.show()
+    
+    return filtered_data
+
+
+
+# # -------------------- Chirp Matched -----------------------------#
+# # Chirp Matched Filtering
+# from scipy.signal import chirp, correlate
+
+# # Generate a reference chirp (you'll need the correct chirp parameters)
+# t = np.linspace(0, 1, len(radar_data[idx_n, :]), endpoint=False)
+# chirp_signal = chirp(t, f0=0, f1=10e6, t1=1, method='linear')  # Chirp 0-10 MHz
+
+# # Perform matched filtering (cross-correlation with the chirp)
+# matched_filter_output = correlate(radar_data[idx_n, :], chirp_signal, mode='same')
+
+# # Calculate and print statistics for matched filter output
+# print("\nChirp Matched Filtering Statistics:")
+# print(f'Maximum: {np.max(matched_filter_output)}')
+# print(f'Minimum: {np.min(matched_filter_output)}')
+# print(f'Mean: {np.mean(matched_filter_output)}')
+
+# # Plot the matched filter output spectrogram
+# fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+# aa, bb, cc, dd = ax.specgram(matched_filter_output, 
+#                              NFFT=256, 
+#                              Fs=fs / 1e6, 
+#                              Fc=None, 
+#                              detrend=None, 
+#                              window=np.hanning(256), 
+#                              scale='dB', 
+#                              noverlap=200, 
+#                              cmap='Greys')
+
+# ax.set_xlabel('Time [μs]', fontweight='bold')
+# ax.set_ylabel('Freq [MHz]', fontweight='bold')
+# ax.set_title(f'Matched Filter Output Spectrogram (0-10 MHz)', fontweight='bold')
+# ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+# plt.tight_layout()
+
+
+# -------------------- Bandpass Filtering -----------------------------#
+lowcut = 0.1  # Lower bound (MHz)
+highcut = 10  # Upper bound (MHz)
+nyquist = fs / 2e6  # Nyquist frequency in MHz
+low = lowcut / nyquist
+high = highcut / nyquist
+
+b, a = butter(4, [low, high], btype='band')
+filtered_radar_data = filtfilt(b, a, radar_data[idx_n, :])
+
+# print("\nBandpass Filtering Statistics:")
+# print(f'Maximum: {np.max(filtered_radar_data)}')
+# print(f'Minimum: {np.min(filtered_radar_data)}')
+# print(f'Mean: {np.mean(filtered_radar_data)}')
+
+# Plot the filtered data spectrogram
+fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+aa, bb, cc, dd = ax.specgram(filtered_radar_data, 
+                             NFFT=256, 
+                             Fs=fs / 1e6, 
+                             Fc=None, 
+                             detrend=None, 
+                             window=np.hanning(256), 
+                             scale='dB', 
+                             noverlap=200, 
+                             cmap='Greys')
+
+ax.set_xlabel('Time [μs]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram of Filtered Data (0-10 MHz)', fontweight='bold')
+ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+plt.tight_layout()
+
+
+# -------------------- Windowing Technique -----------------------------#
+hann_window = windows.hann(len(radar_data[idx_n, :]))
+windowed_data = radar_data[idx_n, :] * hann_window
+
+# print("\nWindowing Technique Statistics:")
+# print(f'Maximum: {np.max(windowed_data)}')
+# print(f'Minimum: {np.min(windowed_data)}')
+# print(f'Mean: {np.mean(windowed_data)}')
+
+# Plot the windowed data spectrogram
+fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+aa, bb, cc, dd = ax.specgram(windowed_data, 
+                             NFFT=256, 
+                             Fs=fs / 1e6, 
+                             Fc=None, 
+                             detrend=None, 
+                             window=np.hanning(256), 
+                             scale='dB', 
+                             noverlap=200, 
+                             cmap='Greys')
+
+ax.set_xlabel('Time [μs]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram of Windowed Data (Hanning) 0-10 MHz', fontweight='bold')
+ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+plt.tight_layout()
+
+
+# -------------------- FFT Masking -----------------------------#
+fft_radar_data = np.fft.fft(radar_data[idx_n, :])
+freqs = np.fft.fftfreq(len(fft_radar_data), d=1/fs)
+
+mask = (np.abs(freqs) > 10e6)
+fft_radar_data[mask] = 0 
+filtered_radar_data_ifft = np.fft.ifft(fft_radar_data)
+
+# print("\nFFT Masking Statistics:")
+# print(f'Maximum: {np.max(filtered_radar_data_ifft)}')
+# print(f'Minimum: {np.min(filtered_radar_data_ifft)}')
+# print(f'Mean: {np.mean(filtered_radar_data_ifft)}')
+
+# Plot the IFFT filtered data spectrogram
+fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+aa, bb, cc, dd = ax.specgram(filtered_radar_data_ifft, 
+                             NFFT=256, 
+                             Fs=fs / 1e6, 
+                             Fc=None, 
+                             detrend=None, 
+                             window=np.hanning(256), 
+                             scale='dB', 
+                             noverlap=200, 
+                             cmap='Greys')
+
+ax.set_xlabel('Time [μs]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Frequency Domain Filtered Spectrogram (0-10 MHz)', fontweight='bold')
+ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+plt.tight_layout()
+
+plt.show()
+
+threshold_value = 10  # Set your threshold value here
+
+# For Bandpass Filtered Data
+print("\nApplying Threshold Filtering for Bandpass Filtered Data:")
+bandpass_filtered_data_with_threshold = threshold_filter_and_plot(filtered_radar_data, threshold_value, fs, "Bandpass Filtered Data Spectrogram")
+
+# For Windowed Data
+print("\nApplying Threshold Filtering for Windowed Data:")
+windowed_data_with_threshold = threshold_filter_and_plot(windowed_data, threshold_value, fs, "Windowed Data Spectrogram")
+
+# For FFT Masked Data
+print("\nApplying Threshold Filtering for FFT Masked Data:")
+fft_masked_data_with_threshold = threshold_filter_and_plot(filtered_radar_data_ifft, threshold_value, fs, "FFT Masked Data Spectrogram")
