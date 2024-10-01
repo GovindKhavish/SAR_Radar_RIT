@@ -94,52 +94,85 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 # Extract Raw I/Q Sensor Data
 radar_data = l0file.get_burst_data(selected_burst)
 
+# Plotting the result
+plt.figure(figsize=(14, 6))
+plt.imshow(10*np.log10(abs(radar_data[:,:])), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
+plt.colorbar(label='Amplitude')
+plt.xlabel('Fast Time')
+plt.ylabel('Slow Time')
+plt.title('Orginal Data')
+
 
 # -------------------- Coherent Compression -----------------------------#
 # Parameters
-idx_n = 1500;
-fs = 46918402.800000004;
+idx_n = 1500
+fs = 46918402.800000004
 
-fig = plt.figure(10, figsize=(6, 6), clear=True);
-ax = fig.add_subplot(111);
-ax.plot(np.abs(radar_data[idx_n,:]), label=f'abs{idx_n}');
-ax.plot(np.real(radar_data[idx_n,:]), label=f'Re{idx_n}');
-ax.plot(np.imag(radar_data[idx_n,:]), label=f'Im{idx_n}');
-ax.legend();
-ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold');
-ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold');
-ax.set_ylabel('|Amplitude|', fontweight='bold');
-plt.tight_layout(); plt.pause(0.1); plt.show();
+radar_section = radar_data[idx_n,:]#[:,idx_n]
+
+fig = plt.figure(10, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
+ax.plot(np.abs(radar_section), label=f'abs{idx_n}')
+ax.plot(np.real(radar_section), label=f'Re{idx_n}')
+ax.plot(np.imag(radar_section), label=f'Im{idx_n}')
+ax.legend()
+ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
+ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
+ax.set_ylabel('|Amplitude|', fontweight='bold')
+plt.tight_layout(); plt.pause(0.1); plt.show()
 
 
-fig = plt.figure(11, figsize=(6, 6), clear=True);
-ax = fig.add_subplot(111);
+fig = plt.figure(11, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
 
 #scale = 'linear';
-scale = 'dB';
-aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,
+scale = 'dB'
+aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs/1e6,
 Fc=None, detrend=None, window=np.hanning(256), scale=scale,
-noverlap=200, cmap='Greys');
-ax.set_xlabel('Time [us]', fontweight='bold');
-ax.set_ylabel('Freq [MHz]', fontweight='bold');
-ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold');
-plt.tight_layout(); plt.pause(0.1); plt.show();
+noverlap=200, cmap='Greys')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
+plt.tight_layout(); plt.pause(0.1); plt.show()
+
+# -------------------- Power Density -----------------------------#
+from scipy.signal import welch, periodogram
+
+# Parameters for Welch's method
+nperseg = 256
+noverlap = 200
+
+# Assuming radar_data and idx_n are defined
+# frequencies, psd= periodogram(np.real(radar_data[idx_n, :]), fs=fs)
+
+frequencies, psd = welch(np.real(radar_section), fs=fs, nperseg=nperseg, noverlap=noverlap)
+
+# Get maximum PSD value in linear scale
+max_psd_value_linear = np.max(psd)
+
+# Convert to dB
+max_psd_value_db = 10 * np.log10(max_psd_value_linear)
+
+# Get the frequency corresponding to the maximum PSD value
+max_psd_freq = frequencies[np.argmax(psd)]
+
+# Print maximum PSD value in dB and corresponding frequency
+print(f"Maximum PSD Value (dB): {max_psd_value_db}")
+print(f"Corresponding Frequency: {max_psd_freq} Hz")
+
+fig = plt.figure(12, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
+ax.plot(frequencies / 1e6, 10 * np.log10(psd), label=f'PSD (Welch) - Line {idx_n}')
+ax.set_xlabel('Frequency [MHz]', fontweight='bold')
+ax.set_ylabel('Power/Frequency [dB/Hz]', fontweight='bold')
+ax.set_title(f'Power Spectral Density (PSD) from rangeline {idx_n}', fontweight='bold')
+ax.legend()
+plt.tight_layout()
+plt.show()
 
 # -------------------- Threshold Function -----------------------------#
-import numpy as np
-import matplotlib.pyplot as plt
-
 def threshold_filter_and_plot(data, threshold_db, fs, title):
-    """
-    Apply a threshold to the input data, zeroing out values below the threshold,
-    and plot the resulting data as a spectrogram.
 
-    Parameters:
-        data (np.ndarray): Input data to apply threshold.
-        threshold_db (float): Threshold value in dB.
-        fs (float): Sampling frequency in Hz.
-        title (str): Title for the spectrogram plot.
-    """
     # Convert threshold from dB to linear scale for comparison
     threshold_linear = 10 ** (threshold_db / 10)
 
@@ -167,8 +200,6 @@ def threshold_filter_and_plot(data, threshold_db, fs, title):
     plt.show()
     
     return filtered_data
-
-
 
 # # -------------------- Chirp Matched -----------------------------#
 # # Chirp Matched Filtering
@@ -214,7 +245,7 @@ low = lowcut / nyquist
 high = highcut / nyquist
 
 b, a = butter(4, [low, high], btype='band')
-filtered_radar_data = filtfilt(b, a, radar_data[idx_n, :])
+filtered_radar_data = filtfilt(b, a, radar_section)
 
 # print("\nBandpass Filtering Statistics:")
 # print(f'Maximum: {np.max(filtered_radar_data)}')
@@ -241,8 +272,8 @@ plt.tight_layout()
 
 
 # -------------------- Windowing Technique -----------------------------#
-hann_window = windows.hann(len(radar_data[idx_n, :]))
-windowed_data = radar_data[idx_n, :] * hann_window
+hann_window = windows.hann(len(radar_section))
+windowed_data = radar_section * hann_window
 
 # print("\nWindowing Technique Statistics:")
 # print(f'Maximum: {np.max(windowed_data)}')
@@ -269,7 +300,7 @@ plt.tight_layout()
 
 
 # -------------------- FFT Masking -----------------------------#
-fft_radar_data = np.fft.fft(radar_data[idx_n, :])
+fft_radar_data = np.fft.fft(radar_section)
 freqs = np.fft.fftfreq(len(fft_radar_data), d=1/fs)
 
 mask = (np.abs(freqs) > 10e6)
@@ -301,16 +332,16 @@ plt.tight_layout()
 
 plt.show()
 
-threshold_value = 10  # Set your threshold value here
+threshold_value = max_psd_value_db  # Set your threshold value here
 
-# For Bandpass Filtered Data
-print("\nApplying Threshold Filtering for Bandpass Filtered Data:")
-bandpass_filtered_data_with_threshold = threshold_filter_and_plot(filtered_radar_data, threshold_value, fs, "Bandpass Filtered Data Spectrogram")
+# # For Bandpass Filtered Data
+# print("\nApplying Threshold Filtering for Bandpass Filtered Data:")
+# bandpass_filtered_data_with_threshold = threshold_filter_and_plot(filtered_radar_data, threshold_value, fs, "Bandpass Filtered Data Spectrogram")
 
-# For Windowed Data
-print("\nApplying Threshold Filtering for Windowed Data:")
-windowed_data_with_threshold = threshold_filter_and_plot(windowed_data, threshold_value, fs, "Windowed Data Spectrogram")
+# # For Windowed Data
+# print("\nApplying Threshold Filtering for Windowed Data:")
+# windowed_data_with_threshold = threshold_filter_and_plot(windowed_data, threshold_value, fs, "Windowed Data Spectrogram")
 
-# For FFT Masked Data
-print("\nApplying Threshold Filtering for FFT Masked Data:")
-fft_masked_data_with_threshold = threshold_filter_and_plot(filtered_radar_data_ifft, threshold_value, fs, "FFT Masked Data Spectrogram")
+# # For FFT Masked Data
+# print("\nApplying Threshold Filtering for FFT Masked Data:")
+# fft_masked_data_with_threshold = threshold_filter_and_plot(filtered_radar_data_ifft, threshold_value, fs, "FFT Masked Data Spectrogram")
