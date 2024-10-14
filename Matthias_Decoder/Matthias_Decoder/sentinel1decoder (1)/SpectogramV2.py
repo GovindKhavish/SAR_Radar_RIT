@@ -94,13 +94,13 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 # Extract Raw I/Q Sensor Data
 radar_data = l0file.get_burst_data(selected_burst)
 
-# Plotting the result
-plt.figure(figsize=(14, 6))
-plt.imshow(10*np.log10(abs(radar_data[:,:])), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
-plt.colorbar(label='Amplitude')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.title('Orginal Data')
+# # Plotting the result
+# plt.figure(figsize=(14, 6))
+# plt.imshow(10*np.log10(abs(radar_data[:,:])), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
+# plt.colorbar(label='Amplitude')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+# plt.title('Orginal Data')
 
 
 # -------------------- Coherent Compression -----------------------------#
@@ -119,56 +119,136 @@ ax.legend()
 ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
 ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
 ax.set_ylabel('|Amplitude|', fontweight='bold')
-plt.tight_layout(); plt.pause(0.1); plt.show()
+plt.tight_layout()
+plt.pause(0.1)
 
+# # Define filter cutoff frequencies (positive counterparts of -1 MHz to -8 MHz)
+# lowcut = 1e6   # 1 MHz in Hz
+# highcut = 8e6  # 8 MHz in Hz
+
+# # Design a bandpass filter to isolate the chirp
+# b, a = butter(N=4, Wn=[lowcut / (0.5 * fs), highcut / (0.5 * fs)], btype='band')
+
+# # Apply the filter to the IQ data
+# radar_section_filtered = filtfilt(b, a, radar_section)
+
+# # Compute and plot the spectrogram after filtering
+# fig = plt.figure(figsize=(6, 6))
+# ax = fig.add_subplot(111)
+
+# ax.specgram(radar_section_filtered, NFFT=512, Fs=fs/1e6, window=np.hanning(512), scale='dB', noverlap=450, cmap='Greys')
+
+# ax.set_xlabel('Time [us]', fontweight='bold')
+# ax.set_ylabel('Frequency [MHz]', fontweight='bold')
+# ax.set_title('Spectrogram After Bandpass Filtering (1 MHz to 8 MHz)', fontweight='bold')
+
+# plt.tight_layout()
+# plt.show()
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
 
-#scale = 'linear';
 scale = 'dB'
-aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs/1e6,
-Fc=None, detrend=None, window=np.hanning(256), scale=scale,
+aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,
 noverlap=200, cmap='Greys')
 ax.set_xlabel('Time [us]', fontweight='bold')
 ax.set_ylabel('Freq [MHz]', fontweight='bold')
 ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
-plt.tight_layout(); plt.pause(0.1); plt.show()
+plt.tight_layout()
+plt.pause(0.1)
 
-# -------------------- Power Density -----------------------------#
-from scipy.signal import welch, periodogram
+# Compute the magnitude of the IQ data for rangeline 1500
+magnitude = np.abs(radar_section)
 
-# Parameters for Welch's method
-nperseg = 256
-noverlap = 200
+# Define a threshold to detect the chirp (adjust based on your data)
+threshold = np.max(magnitude) * 0.5  # 50% of the maximum value (adjust if necessary)
 
-# Assuming radar_data and idx_n are defined
-# frequencies, psd= periodogram(np.real(radar_data[idx_n, :]), fs=fs)
+# Find the fast time indices where the chirp occurs (where the magnitude exceeds the threshold)
+chirp_indices = np.where(magnitude > threshold)[0]
 
-frequencies, psd = welch(np.real(radar_section), fs=fs, nperseg=nperseg, noverlap=noverlap)
+# Isolate the chirp by extracting the fast time section corresponding to the chirp
+y = 200
+start_idx = np.min(chirp_indices)
+end_idx = np.max(chirp_indices)
+isolated_chirp = radar_section[start_idx-y:end_idx+y]
 
-# Get maximum PSD value in linear scale
-max_psd_value_linear = np.max(psd)
+# Visualize the IQ data (real, imaginary, and magnitude) for the isolated chirp
+plt.figure(figsize=(10, 6))
+plt.plot(np.abs(isolated_chirp), label='|Amplitude|')
+plt.plot(np.real(isolated_chirp), label='Real Part')
+plt.plot(np.imag(isolated_chirp), label='Imaginary Part')
+plt.legend()
+plt.title(f'Isolated Chirp in Rangeline {idx_n}')
+plt.xlabel('Fast Time (samples)')
+plt.ylabel('Amplitude')
+plt.grid(True)
 
-# Convert to dB
-max_psd_value_db = 10 * np.log10(max_psd_value_linear)
 
-# Get the frequency corresponding to the maximum PSD value
-max_psd_freq = frequencies[np.argmax(psd)]
-
-# Print maximum PSD value in dB and corresponding frequency
-print(f"Maximum PSD Value (dB): {max_psd_value_db}")
-print(f"Corresponding Frequency: {max_psd_freq} Hz")
-
-fig = plt.figure(12, figsize=(6, 6), clear=True)
+# Compute and plot the spectrogram of the isolated chirp
+fig = plt.figure(figsize=(6, 6))
 ax = fig.add_subplot(111)
-ax.plot(frequencies / 1e6, 10 * np.log10(psd), label=f'PSD (Welch) - Line {idx_n}')
-ax.set_xlabel('Frequency [MHz]', fontweight='bold')
-ax.set_ylabel('Power/Frequency [dB/Hz]', fontweight='bold')
-ax.set_title(f'Power Spectral Density (PSD) from rangeline {idx_n}', fontweight='bold')
-ax.legend()
+Pxx, freqs, bins, im = ax.specgram(isolated_chirp, NFFT=256, Fs=fs/1e6, window=np.hanning(256), scale='dB', noverlap=200, cmap='Greys')
+
+# Customize the axes
+ax.set_xlabel('Time [μs]', fontweight='bold')
+ax.set_ylabel('Frequency [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram of Isolated Chirp in Rangeline {idx_n}', fontweight='bold')
+
+import mne
+from mne.time_frequency import psd_array_multitaper
+
+# Calculate power spectral density using multitaper with magnitude
+isolated_chirp_magnitude = np.abs(isolated_chirp)
+psd, freqs = psd_array_multitaper(isolated_chirp_magnitude, sfreq=fs, fmin=0, fmax=fs/2, adaptive=True, normalization='full', verbose=0)
+
+# Plot the result
+plt.figure(figsize=(10, 6))
+plt.plot(freqs, psd)
+plt.title('Multitaper Spectral Estimation (Magnitude)')
+plt.xlabel('Frequency [MHz]')
+plt.ylabel('Power')
+plt.grid(True)
+plt.show()
+
+
+# Show the plot
 plt.tight_layout()
 plt.show()
+
+# # -------------------- Power Density -----------------------------#
+# from scipy.signal import welch, periodogram
+
+# # Parameters for Welch's method
+# nperseg = 256
+# noverlap = 200
+
+# # Assuming radar_data and idx_n are defined
+# # frequencies, psd= periodogram(np.real(radar_data[idx_n, :]), fs=fs)
+
+# frequencies, psd = welch(np.real(radar_section), fs=fs, nperseg=nperseg, noverlap=noverlap)
+
+# # Get maximum PSD value in linear scale
+# max_psd_value_linear = np.max(psd)
+
+# # Convert to dB
+# max_psd_value_db = 10 * np.log10(max_psd_value_linear)
+
+# # Get the frequency corresponding to the maximum PSD value
+# max_psd_freq = frequencies[np.argmax(psd)]
+
+# # Print maximum PSD value in dB and corresponding frequency
+# print(f"Maximum PSD Value (dB): {max_psd_value_db}")
+# print(f"Corresponding Frequency: {max_psd_freq} Hz")
+
+# fig = plt.figure(12, figsize=(6, 6), clear=True)
+# ax = fig.add_subplot(111)
+# ax.plot(frequencies / 1e6, 10 * np.log10(psd), label=f'PSD (Welch) - Line {idx_n}')
+# ax.set_xlabel('Frequency [MHz]', fontweight='bold')
+# ax.set_ylabel('Power/Frequency [dB/Hz]', fontweight='bold')
+# ax.set_title(f'Power Spectral Density (PSD) from rangeline {idx_n}', fontweight='bold')
+# ax.legend()
+# plt.tight_layout()
+# plt.show()
 
 # -------------------- Threshold Function -----------------------------#
 def threshold_filter_and_plot(data, threshold_db, fs, title):
@@ -238,101 +318,101 @@ def threshold_filter_and_plot(data, threshold_db, fs, title):
 
 
 # -------------------- Bandpass Filtering -----------------------------#
-lowcut = 0.1  # Lower bound (MHz)
-highcut = 10  # Upper bound (MHz)
-nyquist = fs / 2e6  # Nyquist frequency in MHz
-low = lowcut / nyquist
-high = highcut / nyquist
+# lowcut = 0.1  # Lower bound (MHz)
+# highcut = 10  # Upper bound (MHz)
+# nyquist = fs / 2e6  # Nyquist frequency in MHz
+# low = lowcut / nyquist
+# high = highcut / nyquist
 
-b, a = butter(4, [low, high], btype='band')
-filtered_radar_data = filtfilt(b, a, radar_section)
+# b, a = butter(4, [low, high], btype='band')
+# filtered_radar_data = filtfilt(b, a, radar_section)
 
-# print("\nBandpass Filtering Statistics:")
-# print(f'Maximum: {np.max(filtered_radar_data)}')
-# print(f'Minimum: {np.min(filtered_radar_data)}')
-# print(f'Mean: {np.mean(filtered_radar_data)}')
+# # print("\nBandpass Filtering Statistics:")
+# # print(f'Maximum: {np.max(filtered_radar_data)}')
+# # print(f'Minimum: {np.min(filtered_radar_data)}')
+# # print(f'Mean: {np.mean(filtered_radar_data)}')
 
-# Plot the filtered data spectrogram
-fig, ax = plt.subplots(figsize=(6, 6), clear=True)
-aa, bb, cc, dd = ax.specgram(filtered_radar_data, 
-                             NFFT=256, 
-                             Fs=fs / 1e6, 
-                             Fc=None, 
-                             detrend=None, 
-                             window=np.hanning(256), 
-                             scale='dB', 
-                             noverlap=200, 
-                             cmap='Greys')
+# # Plot the filtered data spectrogram
+# fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+# aa, bb, cc, dd = ax.specgram(filtered_radar_data, 
+#                              NFFT=256, 
+#                              Fs=fs / 1e6, 
+#                              Fc=None, 
+#                              detrend=None, 
+#                              window=np.hanning(256), 
+#                              scale='dB', 
+#                              noverlap=200, 
+#                              cmap='Greys')
 
-ax.set_xlabel('Time [μs]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Spectrogram of Filtered Data (0-10 MHz)', fontweight='bold')
-ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
-plt.tight_layout()
+# ax.set_xlabel('Time [μs]', fontweight='bold')
+# ax.set_ylabel('Freq [MHz]', fontweight='bold')
+# ax.set_title(f'Spectrogram of Filtered Data (0-10 MHz)', fontweight='bold')
+# ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+# plt.tight_layout()
 
 
 # -------------------- Windowing Technique -----------------------------#
-hann_window = windows.hann(len(radar_section))
-windowed_data = radar_section * hann_window
+# hann_window = windows.hann(len(radar_section))
+# windowed_data = radar_section * hann_window
 
-# print("\nWindowing Technique Statistics:")
-# print(f'Maximum: {np.max(windowed_data)}')
-# print(f'Minimum: {np.min(windowed_data)}')
-# print(f'Mean: {np.mean(windowed_data)}')
+# # print("\nWindowing Technique Statistics:")
+# # print(f'Maximum: {np.max(windowed_data)}')
+# # print(f'Minimum: {np.min(windowed_data)}')
+# # print(f'Mean: {np.mean(windowed_data)}')
 
-# Plot the windowed data spectrogram
-fig, ax = plt.subplots(figsize=(6, 6), clear=True)
-aa, bb, cc, dd = ax.specgram(windowed_data, 
-                             NFFT=256, 
-                             Fs=fs / 1e6, 
-                             Fc=None, 
-                             detrend=None, 
-                             window=np.hanning(256), 
-                             scale='dB', 
-                             noverlap=200, 
-                             cmap='Greys')
+# # Plot the windowed data spectrogram
+# fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+# aa, bb, cc, dd = ax.specgram(windowed_data, 
+#                              NFFT=256, 
+#                              Fs=fs / 1e6, 
+#                              Fc=None, 
+#                              detrend=None, 
+#                              window=np.hanning(256), 
+#                              scale='dB', 
+#                              noverlap=200, 
+#                              cmap='Greys')
 
-ax.set_xlabel('Time [μs]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Spectrogram of Windowed Data (Hanning) 0-10 MHz', fontweight='bold')
-ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
-plt.tight_layout()
+# ax.set_xlabel('Time [μs]', fontweight='bold')
+# ax.set_ylabel('Freq [MHz]', fontweight='bold')
+# ax.set_title(f'Spectrogram of Windowed Data (Hanning) 0-10 MHz', fontweight='bold')
+# ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+# plt.tight_layout()
 
 
 # -------------------- FFT Masking -----------------------------#
-fft_radar_data = np.fft.fft(radar_section)
-freqs = np.fft.fftfreq(len(fft_radar_data), d=1/fs)
+# fft_radar_data = np.fft.fft(radar_section)
+# freqs = np.fft.fftfreq(len(fft_radar_data), d=1/fs)
 
-mask = (np.abs(freqs) > 10e6)
-fft_radar_data[mask] = 0 
-filtered_radar_data_ifft = np.fft.ifft(fft_radar_data)
+# mask = (np.abs(freqs) > 10e6)
+# fft_radar_data[mask] = 0 
+# filtered_radar_data_ifft = np.fft.ifft(fft_radar_data)
 
-# print("\nFFT Masking Statistics:")
-# print(f'Maximum: {np.max(filtered_radar_data_ifft)}')
-# print(f'Minimum: {np.min(filtered_radar_data_ifft)}')
-# print(f'Mean: {np.mean(filtered_radar_data_ifft)}')
+# # print("\nFFT Masking Statistics:")
+# # print(f'Maximum: {np.max(filtered_radar_data_ifft)}')
+# # print(f'Minimum: {np.min(filtered_radar_data_ifft)}')
+# # print(f'Mean: {np.mean(filtered_radar_data_ifft)}')
 
-# Plot the IFFT filtered data spectrogram
-fig, ax = plt.subplots(figsize=(6, 6), clear=True)
-aa, bb, cc, dd = ax.specgram(filtered_radar_data_ifft, 
-                             NFFT=256, 
-                             Fs=fs / 1e6, 
-                             Fc=None, 
-                             detrend=None, 
-                             window=np.hanning(256), 
-                             scale='dB', 
-                             noverlap=200, 
-                             cmap='Greys')
+# # Plot the IFFT filtered data spectrogram
+# fig, ax = plt.subplots(figsize=(6, 6), clear=True)
+# aa, bb, cc, dd = ax.specgram(filtered_radar_data_ifft, 
+#                              NFFT=256, 
+#                              Fs=fs / 1e6, 
+#                              Fc=None, 
+#                              detrend=None, 
+#                              window=np.hanning(256), 
+#                              scale='dB', 
+#                              noverlap=200, 
+#                              cmap='Greys')
 
-ax.set_xlabel('Time [μs]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Frequency Domain Filtered Spectrogram (0-10 MHz)', fontweight='bold')
-ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
-plt.tight_layout()
+# ax.set_xlabel('Time [μs]', fontweight='bold')
+# ax.set_ylabel('Freq [MHz]', fontweight='bold')
+# ax.set_title(f'Frequency Domain Filtered Spectrogram (0-10 MHz)', fontweight='bold')
+# ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
+# plt.tight_layout()
 
 plt.show()
 
-threshold_value = max_psd_value_db  # Set your threshold value here
+#threshold_value = max_psd_value_db  # Set your threshold value here
 
 # # For Bandpass Filtered Data
 # print("\nApplying Threshold Filtering for Bandpass Filtered Data:")
