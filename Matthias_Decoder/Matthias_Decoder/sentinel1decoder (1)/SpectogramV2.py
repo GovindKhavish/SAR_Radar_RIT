@@ -67,8 +67,8 @@ import sentinel1decoder;
 #filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
 
 # Mipur VH
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 inputfile = filepath+filename
@@ -122,6 +122,116 @@ ax.set_ylabel('|Amplitude|', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 
+fig = plt.figure(11, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
+
+scale = 'dB'
+# aa - matrix containing intensity values for each time freqeuncy bin
+# bb - Array for freunqecy values
+# cc - Array of time segments
+# dd - Image for matplotlib
+aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
+cbar = plt.colorbar(dd, ax=ax)
+cbar.set_label('Intensity [dB]')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
+plt.tight_layout()
+plt.pause(0.1)
+
+# -------------------- Threshold on Intensity Data -----------------------------#
+aa_db = 10 * np.log10(aa)
+threshold_db = 20
+aa_db_filtered = np.where(aa_db >= threshold_db, aa_db, 0)
+
+non_zero_indices = np.nonzero(aa_db_filtered)
+bb_non_zero = bb[non_zero_indices[1]]
+cc_non_zero = cc[non_zero_indices[0]] 
+
+fig = plt.figure(figsize=(6, 6))
+ax = fig.add_subplot(111)
+
+cax = ax.imshow(aa_db_filtered, aspect='auto', extent=[cc.min(), cc.max(), bb.min(), bb.max()],origin='lower', cmap='Greys')
+
+cbar = plt.colorbar(cax, ax=ax)
+cbar.set_label('Intensity [dB]')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Frequency [MHz]', fontweight='bold')
+ax.set_title(f'Filtered Spectrogram (Threshold: {threshold_db} dB)', fontweight='bold')
+
+plt.tight_layout()
+
+# -------------------- Extract Characteristics -----------------------------#
+# dominant frequency
+dominant_frequencies = []
+for time_slice in aa_db_filtered.T:
+    if np.any(time_slice > 0): 
+        dominant_freq_index = np.argmax(time_slice)
+        dominant_frequencies.append(bb[dominant_freq_index])  
+
+# signal duration
+signal_duration = np.count_nonzero(np.any(aa_db_filtered > 0, axis=0)) * (cc[1] - cc[0])
+
+# bandwidth
+freqs_above_threshold = bb[np.any(aa_db_filtered > 0, axis=1)]  # Frequencies
+bandwidth = freqs_above_threshold.max() - freqs_above_threshold.min()
+
+# total energy
+aa_linear_filtered = 10**(aa_db_filtered / 10)  # Linear
+total_energy = np.sum(aa_linear_filtered)
+
+# peak frequency
+max_intensity_idx = np.unravel_index(np.argmax(aa_db_filtered), aa_db_filtered.shape)
+peak_frequency = bb[max_intensity_idx[0]]  # Frequency 
+peak_time = cc[max_intensity_idx[1]]       # Time 
+
+# Center frequency
+center_frequencies = np.sum(aa_linear_filtered * bb[:, np.newaxis], axis=0) / np.sum(aa_linear_filtered, axis=0)
+overall_center_frequency = np.nanmean(center_frequencies) 
+
+# Chirp rate (rate of change of frequency over time)
+time_intervals = np.diff(bb[:len(dominant_frequencies)]) 
+frequency_changes = np.diff(dominant_frequencies)
+chirp_rate = frequency_changes / time_intervals  # MHz/us
+average_chirp_rate = np.nanmean(chirp_rate)
+
+# Output the results
+#print(f"Dominant Frequencies: {dominant_frequencies}")
+print(f"\nSignal Duration: {round(signal_duration,3)} us")
+print(f"Bandwidth: {round(bandwidth,3)} MHz")
+print(f"Total Energy: {round(total_energy,3)} W")
+print(f"Peak Frequency: {round(peak_frequency,3)} MHz at time {round(peak_time,3)} us")
+print(f"Center Frequency: {round(overall_center_frequency,3)} MHz")
+print(f"Average Chirp Rate: {round(average_chirp_rate, 3)} MHz/us\n")
+
+# -------------------- Threshold on Raw Data -----------------------------#
+# magnitude = np.abs(radar_section)
+# threshold = np.max(magnitude) * 0.5  # 50% of the maximum value
+# chirp_indices = np.where(magnitude > threshold)[0]
+# y = 200
+# start_idx = np.min(chirp_indices)
+# end_idx = np.max(chirp_indices)
+# isolated_chirp = radar_section[start_idx-y:end_idx+y]
+
+# plt.figure(figsize=(10, 6))
+# plt.plot(np.abs(isolated_chirp), label='|Amplitude|')
+# plt.plot(np.real(isolated_chirp), label='Real Part')
+# plt.plot(np.imag(isolated_chirp), label='Imaginary Part')
+# plt.legend()
+# plt.title(f'Isolated Chirp in Rangeline {idx_n}')
+# plt.xlabel('Fast Time (samples)')
+# plt.ylabel('Amplitude')
+# plt.grid(True)
+
+# fig = plt.figure(figsize=(6, 6))
+# ax = fig.add_subplot(111)
+# Pxx, freqs, bins, im = ax.specgram(isolated_chirp, NFFT=256, Fs=fs/1e6, window=np.hanning(256), scale='dB', noverlap=200, cmap='Greys')
+# cbar = plt.colorbar(im, ax=ax)
+# cbar.set_label('Intensity [dB]')
+# ax.set_xlabel('Time [μs]', fontweight='bold')
+# ax.set_ylabel('Frequency [MHz]', fontweight='bold')
+# ax.set_title(f'Spectrogram of Isolated Chirp in Rangeline {idx_n}', fontweight='bold')
+# -------------------- Butterworth Filter -----------------------------#
 # # Define filter cutoff frequencies (positive counterparts of -1 MHz to -8 MHz)
 # lowcut = 1e6   # 1 MHz in Hz
 # highcut = 8e6  # 8 MHz in Hz
@@ -145,75 +255,41 @@ plt.pause(0.1)
 # plt.tight_layout()
 # plt.show()
 
-fig = plt.figure(11, figsize=(6, 6), clear=True)
-ax = fig.add_subplot(111)
+# -------------------- ------------- -----------------------------#
+# from scipy.signal import hilbert
 
-scale = 'dB'
-aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,
-noverlap=200, cmap='Greys')
-ax.set_xlabel('Time [us]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
-plt.tight_layout()
-plt.pause(0.1)
+# analytic_signal = hilbert(isolated_chirp)
+# instantaneous_phase = np.unwrap(np.angle(analytic_signal))
+# instantaneous_frequency = np.diff(instantaneous_phase) * (fs / (2.0 * np.pi))
 
-# Compute the magnitude of the IQ data for rangeline 1500
-magnitude = np.abs(radar_section)
+# plt.figure(figsize=(10, 6))
+# plt.plot(instantaneous_frequency)
+# plt.title('Instantaneous Frequency of Isolated Chirp')
+# plt.xlabel('Fast Time (samples)')
+# plt.ylabel('Frequency [Hz]')
+# plt.grid(True)
+# -------------------- ------------- -----------------------------#
 
-# Define a threshold to detect the chirp (adjust based on your data)
-threshold = np.max(magnitude) * 0.5  # 50% of the maximum value (adjust if necessary)
+# import mne
+# from mne.time_frequency import psd_array_multitaper
 
-# Find the fast time indices where the chirp occurs (where the magnitude exceeds the threshold)
-chirp_indices = np.where(magnitude > threshold)[0]
+# # Calculate power spectral density using multitaper with magnitude
+# isolated_chirp_magnitude = np.abs(isolated_chirp)
+# psd, freqs = psd_array_multitaper(isolated_chirp_magnitude, sfreq=fs, fmin=0, fmax=fs/2, adaptive=True, normalization='full', verbose=0)
 
-# Isolate the chirp by extracting the fast time section corresponding to the chirp
-y = 200
-start_idx = np.min(chirp_indices)
-end_idx = np.max(chirp_indices)
-isolated_chirp = radar_section[start_idx-y:end_idx+y]
-
-# Visualize the IQ data (real, imaginary, and magnitude) for the isolated chirp
-plt.figure(figsize=(10, 6))
-plt.plot(np.abs(isolated_chirp), label='|Amplitude|')
-plt.plot(np.real(isolated_chirp), label='Real Part')
-plt.plot(np.imag(isolated_chirp), label='Imaginary Part')
-plt.legend()
-plt.title(f'Isolated Chirp in Rangeline {idx_n}')
-plt.xlabel('Fast Time (samples)')
-plt.ylabel('Amplitude')
-plt.grid(True)
+# # Plot the result
+# plt.figure(figsize=(10, 6))
+# plt.plot(freqs, psd)
+# plt.title('Multitaper Spectral Estimation (Magnitude)')
+# plt.xlabel('Frequency [MHz]')
+# plt.ylabel('Power')
+# plt.grid(True)
+# plt.show()
 
 
-# Compute and plot the spectrogram of the isolated chirp
-fig = plt.figure(figsize=(6, 6))
-ax = fig.add_subplot(111)
-Pxx, freqs, bins, im = ax.specgram(isolated_chirp, NFFT=256, Fs=fs/1e6, window=np.hanning(256), scale='dB', noverlap=200, cmap='Greys')
-
-# Customize the axes
-ax.set_xlabel('Time [μs]', fontweight='bold')
-ax.set_ylabel('Frequency [MHz]', fontweight='bold')
-ax.set_title(f'Spectrogram of Isolated Chirp in Rangeline {idx_n}', fontweight='bold')
-
-import mne
-from mne.time_frequency import psd_array_multitaper
-
-# Calculate power spectral density using multitaper with magnitude
-isolated_chirp_magnitude = np.abs(isolated_chirp)
-psd, freqs = psd_array_multitaper(isolated_chirp_magnitude, sfreq=fs, fmin=0, fmax=fs/2, adaptive=True, normalization='full', verbose=0)
-
-# Plot the result
-plt.figure(figsize=(10, 6))
-plt.plot(freqs, psd)
-plt.title('Multitaper Spectral Estimation (Magnitude)')
-plt.xlabel('Frequency [MHz]')
-plt.ylabel('Power')
-plt.grid(True)
-plt.show()
-
-
-# Show the plot
-plt.tight_layout()
-plt.show()
+# # Show the plot
+# plt.tight_layout()
+# plt.show()
 
 # # -------------------- Power Density -----------------------------#
 # from scipy.signal import welch, periodogram
@@ -277,7 +353,6 @@ def threshold_filter_and_plot(data, threshold_db, fs, title):
     ax.set_ylim([-10, 10])  # Focus on 0-10 MHz
     plt.colorbar(im, ax=ax, label='Intensity [dB]')  # Use the correct object for colorbar
     plt.tight_layout()
-    plt.show()
     
     return filtered_data
 
