@@ -201,6 +201,7 @@ else:
     # For single group (if there's only one group, you process as before)
     if len(groups) == 1:
         non_zero_indices = np.nonzero(aa_db_filtered)
+        
         bb_non_zero = bb[non_zero_indices[1]]
         cc_non_zero = cc[non_zero_indices[0]]
 

@@ -95,12 +95,13 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 # Raw I/Q Sensor Data
 radar_data = l0file.get_burst_data(selected_burst)
 
-plt.figure(figsize=(14, 6))
-plt.imshow(10*np.log10(abs(radar_data[:,:])), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
-plt.colorbar(label='Amplitude')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.title('Orginal Data')
+# plt.figure(figsize=(14, 6))
+# plt.imshow(10*np.log10(abs(radar_data[:,:])), aspect='auto', interpolation='none', origin='lower') #vmin=0,vmax=10)
+# plt.colorbar(label='Amplitude')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+# plt.title('Orginal Data')
+
 
 radar_data_thresholded = np.array([Spectogram_Functions.adaptive_threshold_row(row, factor=2) for row in radar_data])
 
@@ -114,75 +115,56 @@ plt.ylabel('Slow Time')
 plt.title('Clustered Raw I/Q Data')
 plt.show()
 
-# User-defined start and end rows for processing
-start_row = 1245  # Set this to the desired starting row index
-end_row = 1250    # Set this to the desired ending row index (inclusive)
-fs = 46918402.800000004  # in Hz
-slow_time_interval = 1 / fs * 1e6  # Convert to microseconds
+# -------------------- Spectogram used -----------------------------#
+# Parameters
+idx_n = 1250
+fs = 46918402.800000004
 
-# Validate the start and end indices
-if start_row < 0 or end_row >= len(radar_data):
-    raise ValueError("Start and end rows must be within the bounds of the radar data.")
-if start_row > end_row:
-    raise ValueError("The start row must be less than or equal to the end row.")
+radar_section = radar_data_thresholded[idx_n,:]#[:,idx_n]
 
-all_rangeline_characteristics = []
+# fig = plt.figure(10, figsize=(6, 6), clear=True)
+# ax = fig.add_subplot(111)
+# ax.plot(np.abs(radar_section), label=f'abs{idx_n}')
+# ax.plot(np.real(radar_section), label=f'Re{idx_n}')
+# ax.plot(np.imag(radar_section), label=f'Im{idx_n}')
+# ax.legend()
+# ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
+# ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
+# ax.set_ylabel('|Amplitude|', fontweight='bold')
+# plt.tight_layout()
+# plt.pause(0.1)
 
-# -------------------- Loop Through Specified Rangelines -----------------
-for idx_n in range(start_row, end_row + 1):
-    
-    # Print progress
-    print(f"Processing Rangeline {idx_n}/{end_row}")
-    
-    # Extract radar section for the current rangeline
-    radar_section = radar_data_thresholded[idx_n, :]
-    
-    # Generate the spectrogram for the radar section
-    fig = plt.figure(11, figsize=(6, 6), clear=True)
-    ax = fig.add_subplot(111)
-    
-    aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs / 1e6, Fc=None, detrend=None, window=np.hanning(256), scale='dB', noverlap=200, cmap='Greys')
-    
-    # cbar = plt.colorbar(dd, ax=ax)
-    # cbar.set_label('Intensity [dB]')
-    # ax.set_xlabel('Time [us]', fontweight='bold')
-    # ax.set_ylabel('Freq [MHz]', fontweight='bold')
-    # ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
-    # plt.tight_layout()
-    # plt.pause(0.1)
+fig = plt.figure(11, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
 
-    # Apply adaptive threshold to the spectrogram
-    threshold, aa_db_filtered = Spectogram_Functions.adaptive_threshold(aa, factor=2)
+# aa - matrix containing intensity values for each time freqeuncy bin
+# bb - Array for freunqecy values
+# cc - Array of time segments
+# dd - Image for matplotlib
+aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale='dB',noverlap=200, cmap='Greys')
+cbar = plt.colorbar(dd, ax=ax)
+cbar.set_label('Intensity [dB]')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
+plt.tight_layout()
+plt.pause(0.1)
 
-    # # Filtered spectrogram plot (optional)
-    # fig = plt.figure(12, figsize=(6, 6), clear=True)
-    # ax = fig.add_subplot(111)
-    # dd = ax.imshow(10 * np.log10(aa_db_filtered), aspect='auto', origin='lower', cmap='Greys')
-    
-    # cbar = plt.colorbar(dd, ax=ax)
-    # cbar.set_label('Intensity [dB]')
-    # ax.set_xlabel('Time [us]', fontweight='bold')
-    # ax.set_ylabel('Freq [MHz]', fontweight='bold')
-    # ax.set_title(f'Filtered Spectrogram (Threshold: {round(10 * np.log10(threshold), 2)} dB)', fontweight='bold')
-    # plt.tight_layout()
-    # plt.pause(0.1)
-    
-# Assuming non_zero_indices and groups are returned from the Spectrogram Function
-non_zero_indices, groups = Spectogram_Functions.group_consecutive_time_indices(aa_db_filtered)
+threshold,aa_db_filtered = Spectogram_Functions.adaptive_threshold(aa, factor=2)
+
+fig = plt.figure(12, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
+dd = ax.imshow(10 * np.log10(aa_db_filtered), aspect='auto', origin='lower', cmap='Greys')
+cbar = plt.colorbar(dd, ax=ax)
+cbar.set_label('Intensity [dB]')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Filtered Spectrogram (Threshold: {round(10*np.log10(threshold),2)} dB)', fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+non_zero_indices , groups = Spectogram_Functions.group_consecutive_time_indices(aa_db_filtered)
+
 characteristics = Spectogram_Functions.process_groups_and_extract_characteristics(groups, aa_db_filtered, bb, cc, non_zero_indices)
 
-adjusted_groups = []
-for group in groups:
-    start_time = group[0] * slow_time_interval  
-    end_time = group[-1] * slow_time_interval
-    adjusted_groups.append([group, start_time, end_time])
 
-# Append the characteristics of the current rangeline to the major storage variable
-all_rangeline_characteristics.append([idx_n, characteristics, adjusted_groups])
-
-# Accessing and printing the first rangeline characteristics
-first_rangeline_data = all_rangeline_characteristics[0] 
-
-# Print characteristics directly
-for group_char in first_rangeline_data[1]:  # Access characteristics which is now a list
-    print(f"Group Characteristics: {group_char}")
