@@ -184,5 +184,6 @@ all_rangeline_characteristics.append([idx_n, characteristics, adjusted_groups])
 first_rangeline_data = all_rangeline_characteristics[0] 
 
 # Print characteristics directly
-for group_char in first_rangeline_data[1]:  # Access characteristics which is now a list
-    print(f"Group Characteristics: {group_char}")
+for group_char in first_rangeline_data[1]:  # Access characteristics``
+    for i in range(0,5):
+        print(f"Group Characteristics: {group_char[i]}")
