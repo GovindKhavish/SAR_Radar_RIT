@@ -164,9 +164,9 @@ def process_groups_and_extract_characteristics(groups, aa_db_filtered, bb, cc, n
     characteristics_list = []
 
     if len(groups) > 2:
-        print("More than 2 groups detected. Skipping processing.")
+        print("\nMore than 2 groups detected. Skipping processing.")
     else:
-        print(f"Number of Groups of consecutive time indices: {len(groups)}\n")
+        #print(f"Number of Groups of consecutive time indices: {len(groups)}\n")
 
         if len(groups) == 1:
             non_zero_indices = np.nonzero(aa_db_filtered)

@@ -68,8 +68,8 @@ import sentinel1decoder;
 #filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
 
 # Mipur VH
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 inputfile = filepath+filename
@@ -114,13 +114,11 @@ plt.ylabel('Slow Time')
 plt.title('Clustered Raw I/Q Data')
 plt.show()
 
-# User-defined start and end rows for processing
-start_row = 1245  # Set this to the desired starting row index
-end_row = 1250    # Set this to the desired ending row index (inclusive)
-fs = 46918402.800000004  # in Hz
-slow_time_interval = 1 / fs * 1e6  # Convert to microseconds
+start_row = 1000 
+end_row = 1500   # Inclusive
+fs = 46918402.800000004  # Hz
+slow_time_interval = 1 / fs * 1e6  # microseconds
 
-# Validate the start and end indices
 if start_row < 0 or end_row >= len(radar_data):
     raise ValueError("Start and end rows must be within the bounds of the radar data.")
 if start_row > end_row:
@@ -129,32 +127,20 @@ if start_row > end_row:
 all_rangeline_characteristics = []
 
 # -------------------- Loop Through Specified Rangelines -----------------
+pulse_number = 1  # Initialize pulse number
+
 for idx_n in range(start_row, end_row + 1):
     
-    # Print progress
     print(f"Processing Rangeline {idx_n}/{end_row}")
-    
-    # Extract radar section for the current rangeline
     radar_section = radar_data_thresholded[idx_n, :]
     
-    # Generate the spectrogram for the radar section
     fig = plt.figure(11, figsize=(6, 6), clear=True)
     ax = fig.add_subplot(111)
-    
     aa, bb, cc, dd = ax.specgram(radar_section, NFFT=256, Fs=fs / 1e6, Fc=None, detrend=None, window=np.hanning(256), scale='dB', noverlap=200, cmap='Greys')
     
-    # cbar = plt.colorbar(dd, ax=ax)
-    # cbar.set_label('Intensity [dB]')
-    # ax.set_xlabel('Time [us]', fontweight='bold')
-    # ax.set_ylabel('Freq [MHz]', fontweight='bold')
-    # ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
-    # plt.tight_layout()
-    # plt.pause(0.1)
-
-    # Apply adaptive threshold to the spectrogram
+    # Apply adaptive threshold
     threshold, aa_db_filtered = Spectogram_Functions.adaptive_threshold(aa, factor=2)
 
-    # # Filtered spectrogram plot (optional)
     # fig = plt.figure(12, figsize=(6, 6), clear=True)
     # ax = fig.add_subplot(111)
     # dd = ax.imshow(10 * np.log10(aa_db_filtered), aspect='auto', origin='lower', cmap='Greys')
@@ -167,23 +153,74 @@ for idx_n in range(start_row, end_row + 1):
     # plt.tight_layout()
     # plt.pause(0.1)
     
-# Assuming non_zero_indices and groups are returned from the Spectrogram Function
-non_zero_indices, groups = Spectogram_Functions.group_consecutive_time_indices(aa_db_filtered)
-characteristics = Spectogram_Functions.process_groups_and_extract_characteristics(groups, aa_db_filtered, bb, cc, non_zero_indices)
+    non_zero_indices, groups = Spectogram_Functions.group_consecutive_time_indices(aa_db_filtered)
+    characteristics = Spectogram_Functions.process_groups_and_extract_characteristics(groups, aa_db_filtered, bb, cc, non_zero_indices)
 
-adjusted_groups = []
-for group in groups:
-    start_time = group[0] * slow_time_interval  
-    end_time = group[-1] * slow_time_interval
-    adjusted_groups.append([group, start_time, end_time])
+    adjusted_groups = []
+    for group in groups:
+        start_time = group[0] * slow_time_interval  
+        end_time = group[-1] * slow_time_interval
+        adjusted_groups.append([group, start_time, end_time])
 
-# Append the characteristics of the current rangeline to the major storage variable
-all_rangeline_characteristics.append([idx_n, characteristics, adjusted_groups])
+    for i, group_characteristics in enumerate(characteristics):
+        if i < len(adjusted_groups):
+            all_rangeline_characteristics.append([pulse_number, idx_n, group_characteristics, adjusted_groups[i]])
+            pulse_number += 1
+        else:
+            print(f"Warning: Index {i} out of range for adjusted_groups")
 
-# Accessing and printing the first rangeline characteristics
-first_rangeline_data = all_rangeline_characteristics[0] 
+# Plotting
+pulse_numbers = []
+bandwidths = []
+durations = []
+center_frequencies = []
 
-# Print characteristics directly
-for group_char in first_rangeline_data[1]:  # Access characteristics``
-    for i in range(0,5):
-        print(f"Group Characteristics: {group_char[i]}")
+for item in all_rangeline_characteristics:
+    pulse_number = item[0]  # Pulse number
+    group_characteristics = item[2]  # Group characteristics
+
+    if len(group_characteristics) >= 6: 
+        bandwidth = group_characteristics[1]  # Bandwidth
+        duration = group_characteristics[0]  # Signal duration
+        center_frequency = group_characteristics[4]  # Center frequency
+        
+        pulse_numbers.append(pulse_number)
+        bandwidths.append(bandwidth)
+        durations.append(duration)
+        center_frequencies.append(center_frequency)
+    else:
+        print(f"Warning: group characteristics at pulse number {pulse_number} are shorter than expected. Length: {len(group_characteristics)}")
+
+# Pulse Number vs Bandwidth
+plt.figure(figsize=(10, 5))
+plt.plot(pulse_numbers, bandwidths, marker='o', label='Bandwidth')
+plt.title('Pulse Number vs Bandwidth')
+plt.xlabel('Pulse Number')
+plt.ylabel('Bandwidth')
+plt.grid(True)
+plt.legend()
+
+# Pulse Number vs Signal Duration
+plt.figure(figsize=(10, 5))
+plt.plot(pulse_numbers, durations, marker='o', label='Duration')
+plt.title('Pulse Number vs Signal Duration')
+plt.xlabel('Pulse Number')
+plt.ylabel('Signal Duration')
+plt.grid(True)
+plt.legend()
+
+# Pulse Number vs Center Frequency
+plt.figure(figsize=(10, 5))
+plt.plot(pulse_numbers, center_frequencies, marker='o', label='Center Frequency')
+plt.title('Pulse Number vs Center Frequency')
+plt.xlabel('Pulse Number')
+plt.ylabel('Center Frequency')
+plt.grid(True)
+plt.legend()
+
+plt.show()
+
+
+
+
+
