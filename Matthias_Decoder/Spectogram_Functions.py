@@ -25,6 +25,7 @@ def adaptive_threshold_row(row, factor=2):
     std_value = np.std(np.abs(row)) 
     threshold = mean_value + factor * std_value
     thresholded_row = np.where(np.abs(row) < threshold, 0, row)
+
     return thresholded_row
 
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
@@ -60,50 +61,43 @@ def identify_clusters(row, max_gap=15, min_cluster_size=30):
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
     std_value = np.std(array)
-    
-    # Compute the threshold as mean + factor * std
     threshold = mean_value + factor * std_value
-    
-    # Apply the thresholding
     thresholded_array = np.where(array < threshold, 0, array)
     
     return threshold,thresholded_array
 
 # -------------------- Feature Extraction -----------------------------#
 def extract_chirp_characteristics(aa_db_filtered, bb, cc):
-    # Find the dominant frequencies for each time slice (column of aa_db_filtered)
     dominant_frequencies = []
     for time_slice in aa_db_filtered.T:
-        if np.any(time_slice > 0):  # Check if the slice has any signal
+        if np.any(time_slice > 0):
             dominant_freq_index = np.argmax(time_slice)
             dominant_frequencies.append(bb[dominant_freq_index])
 
-    # Signal duration (in microseconds)
+    # Signal duration
     signal_duration = np.count_nonzero(np.any(aa_db_filtered > 0, axis=0)) * (cc[1] - cc[0])
 
-    # Frequencies above threshold (non-zero entries in the spectrogram)
     freqs_above_threshold = bb[np.any(aa_db_filtered > 0, axis=1)]
     bandwidth = freqs_above_threshold.max() - freqs_above_threshold.min()
 
-    # Find the peak frequency and peak time (location of the maximum intensity in the spectrogram)
+    # Peak frequency and Peak time
     max_intensity_idx = np.unravel_index(np.argmax(aa_db_filtered), aa_db_filtered.shape)
     peak_frequency = bb[max_intensity_idx[0]]
     peak_time = cc[max_intensity_idx[1]]
 
-    # Center frequency and chirp deviation
+    # Center frequency
     center_frequency = (freqs_above_threshold.max() + freqs_above_threshold.min()) / 2
     chirp_deviation = freqs_above_threshold.max() - freqs_above_threshold.min()
 
-    # Calculate pulse width (duration) and chirp rate
+    # Pulse width and Chirp rate
     pulse_width = signal_duration
     chirp_rate = chirp_deviation / pulse_width if pulse_width != 0 else 0  # MHz/us
 
-    # Find the start and end time based on the first and last non-zero time indices
-    non_zero_columns = np.any(aa_db_filtered > 0, axis=0)  # Identifying columns with non-zero values
-    start_time = cc[np.argmax(non_zero_columns)]  # First non-zero time index
-    stop_time = cc[len(non_zero_columns) - 1 - np.argmax(np.flip(non_zero_columns))]  # Last non-zero time index
+    # Start and End times
+    non_zero_columns = np.any(aa_db_filtered > 0, axis=0) 
+    start_time = cc[np.argmax(non_zero_columns)] 
+    stop_time = cc[len(non_zero_columns) - 1 - np.argmax(np.flip(non_zero_columns))]  
 
-    # Return the characteristics as a list
     return [
         signal_duration,
         bandwidth,
@@ -117,7 +111,6 @@ def extract_chirp_characteristics(aa_db_filtered, bb, cc):
 
 # -------------------- Plotting -----------------------------#
 def plot_chirp_groups(extracted_values):
-    """Plot the extracted groups"""
     for group_index, entry in enumerate(extracted_values, start=1):
         group = entry['group']
         values_in_group = entry['values']
