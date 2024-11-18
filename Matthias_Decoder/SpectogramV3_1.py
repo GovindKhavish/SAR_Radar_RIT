@@ -117,22 +117,22 @@ plt.show()
 
 # -------------------- Spectogram used -----------------------------#
 # Parameters
-idx_n = 1495
+idx_n = 1070
 fs = 46918402.800000004
 
 radar_section = radar_data_thresholded[idx_n,:]#[:,idx_n]
 
-# fig = plt.figure(10, figsize=(6, 6), clear=True)
-# ax = fig.add_subplot(111)
-# ax.plot(np.abs(radar_section), label=f'abs{idx_n}')
-# ax.plot(np.real(radar_section), label=f'Re{idx_n}')
-# ax.plot(np.imag(radar_section), label=f'Im{idx_n}')
-# ax.legend()
-# ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
-# ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
-# ax.set_ylabel('|Amplitude|', fontweight='bold')
-# plt.tight_layout()
-# plt.pause(0.1)
+fig = plt.figure(10, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
+ax.plot(np.abs(radar_section), label=f'abs{idx_n}')
+ax.plot(np.real(radar_section), label=f'Re{idx_n}')
+ax.plot(np.imag(radar_section), label=f'Im{idx_n}')
+ax.legend()
+ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
+ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
+ax.set_ylabel('|Amplitude|', fontweight='bold')
+plt.tight_layout()
+plt.pause(0.1)
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)

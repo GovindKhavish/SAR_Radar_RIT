@@ -60,16 +60,16 @@ import sentinel1decoder;
 
 # Northern Sea VH
 #filepath = r"C:\Users\govin\OneDrive\Desktop\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
-# filepath = "/Users/khavishgovind/Documents/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE/"
-# filename = 's1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
+#filepath = "/Users/khavishgovind/Documents/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE/"
+#filename = 's1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 # White Sands VH
 #filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\WhiteSand_USA\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE"
 #filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
 
 # Mipur VH
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 inputfile = filepath+filename
@@ -114,7 +114,7 @@ plt.ylabel('Slow Time')
 plt.title('Clustered Raw I/Q Data')
 plt.show()
 
-start_row = 1000 
+start_row = 0
 end_row = 1500   # Inclusive
 fs = 46918402.800000004  # Hz
 slow_time_interval = 1 / fs * 1e6  # microseconds
@@ -169,7 +169,29 @@ for idx_n in range(start_row, end_row + 1):
         else:
             print(f"Warning: Index {i} out of range for adjusted_groups")
 
-# Plotting
+# # Plotting
+# pulse_numbers = []
+# bandwidths = []
+# durations = []
+# center_frequencies = []
+
+# for item in all_rangeline_characteristics:
+#     pulse_number = item[0]  # Pulse number
+#     group_characteristics = item[2]  # Group characteristics
+
+#     if len(group_characteristics) >= 6: 
+#         bandwidth = group_characteristics[1]  # Bandwidth
+#         duration = group_characteristics[0]  # Signal duration
+#         center_frequency = group_characteristics[4]  # Center frequency
+        
+#         pulse_numbers.append(pulse_number)
+#         bandwidths.append(bandwidth)
+#         durations.append(duration)
+#         center_frequencies.append(center_frequency)
+#     else:
+#         print(f"Warning: group characteristics at pulse number {pulse_number} are shorter than expected. Length: {len(group_characteristics)}")
+
+        # Plotting
 pulse_numbers = []
 bandwidths = []
 durations = []
@@ -183,17 +205,21 @@ for item in all_rangeline_characteristics:
         bandwidth = group_characteristics[1]  # Bandwidth
         duration = group_characteristics[0]  # Signal duration
         center_frequency = group_characteristics[4]  # Center frequency
-        
-        pulse_numbers.append(pulse_number)
-        bandwidths.append(bandwidth)
-        durations.append(duration)
-        center_frequencies.append(center_frequency)
+
+        # Check if any of the characteristics are zero and skip if true
+        if all(val != 0 for val in [bandwidth, duration, center_frequency]):
+            pulse_numbers.append(pulse_number)
+            bandwidths.append(bandwidth)
+            durations.append(duration)
+            center_frequencies.append(center_frequency)
+        else:
+            print(f"Skipping pulse number {pulse_number} due to zero characteristics.")
     else:
         print(f"Warning: group characteristics at pulse number {pulse_number} are shorter than expected. Length: {len(group_characteristics)}")
 
 # Pulse Number vs Bandwidth
 plt.figure(figsize=(10, 5))
-plt.plot(pulse_numbers, bandwidths, marker='o', label='Bandwidth')
+plt.plot(pulse_numbers, bandwidths, marker='.', label='Bandwidth')
 plt.title('Pulse Number vs Bandwidth')
 plt.xlabel('Pulse Number')
 plt.ylabel('Bandwidth')
@@ -202,7 +228,7 @@ plt.legend()
 
 # Pulse Number vs Signal Duration
 plt.figure(figsize=(10, 5))
-plt.plot(pulse_numbers, durations, marker='o', label='Duration')
+plt.plot(pulse_numbers, durations, marker='.', label='Duration')
 plt.title('Pulse Number vs Signal Duration')
 plt.xlabel('Pulse Number')
 plt.ylabel('Signal Duration')
@@ -211,7 +237,7 @@ plt.legend()
 
 # Pulse Number vs Center Frequency
 plt.figure(figsize=(10, 5))
-plt.plot(pulse_numbers, center_frequencies, marker='o', label='Center Frequency')
+plt.plot(pulse_numbers, center_frequencies, marker='.', label='Center Frequency')
 plt.title('Pulse Number vs Center Frequency')
 plt.xlabel('Pulse Number')
 plt.ylabel('Center Frequency')

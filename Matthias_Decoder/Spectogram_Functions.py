@@ -153,11 +153,13 @@ def group_consecutive_time_indices(aa_db_filtered):
 
     return non_zero_indices, groups
 
+# -------------------- Characteristic Extraction-----------------------------#
 def process_groups_and_extract_characteristics(groups, aa_db_filtered, bb, cc, non_zero_indices):
     characteristics_list = []
 
     if len(groups) > 2:
-        print("\nMore than 2 groups detected. Skipping processing.")
+        zero_characteristics = [0,0,0,0,0,0,0,0]
+        characteristics_list.append(zero_characteristics)
     else:
         #print(f"Number of Groups of consecutive time indices: {len(groups)}\n")
 
