@@ -86,6 +86,36 @@ def cfar_1d(data, num_guard_cells, num_reference_cells, threshold_factor):
     
     return thresholded_data
 
+def cfar_detector(iq_data, guard_cells, training_cells, pfa):
+    # Calculate the amplitude of IQ data
+    amplitude = np.abs(iq_data)
+    num_cells = len(amplitude)
+    
+    total_training_cells = 2 * training_cells
+    alpha = total_training_cells * (pfa ** (-1 / total_training_cells) - 1)
+    print(alpha)
+
+    # Initialize an empty list for detected peaks
+    detected_peaks = []
+
+    # Slide across the data to compute the threshold for each CUT
+    for cut_idx in range(training_cells + guard_cells, num_cells - training_cells - guard_cells):
+
+        leading_train = amplitude[cut_idx - training_cells - guard_cells : cut_idx - guard_cells]
+        trailing_train = amplitude[cut_idx + guard_cells + 1 : cut_idx + guard_cells + 1 + training_cells]
+
+        noise_level = (np.sum(leading_train) + np.sum(trailing_train)) / (total_training_cells)
+        
+        threshold = alpha * noise_level
+        
+        # Check if the CUT exceeds the threshold
+        if amplitude[cut_idx] > threshold:
+            detected_peaks.append(1)
+        else:
+            detected_peaks.append(0)
+
+    return np.array(detected_peaks)
+
 
 # Spectrogram plot
 idx_n = 1070
@@ -93,12 +123,14 @@ fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
 # Process the data using the CFAR function
-alarm_rate = 1e-6
+alarm_rate = 1e-9
 num_guard_cells = 100
 num_reference_cells = 1000 
 threshold_factor = set_alpha(2*num_reference_cells,alarm_rate)
 print(threshold_factor)
-radar_data_thresholded = cfar_1d(radar_section, num_guard_cells, num_reference_cells, threshold_factor)
+#adar_data_thresholded = cfar_1d(radar_section, num_guard_cells, num_reference_cells, threshold_factor)
+radar_data_thresholded = cfar_detector(radar_section, num_guard_cells, num_reference_cells, alarm_rate)
+
 
 fig = plt.figure(10, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)

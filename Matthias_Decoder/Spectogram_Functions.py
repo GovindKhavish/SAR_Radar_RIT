@@ -20,7 +20,7 @@ from scipy.signal import butter, filtfilt
 from sklearn.cluster import DBSCAN
 
 # -------------------- Row Adaptive Thresholding on Raw I/Q Data -----------------------------#
-def adaptive_threshold_row(row, factor=2):
+def adaptive_threshold_row(row, factor):
     mean_value = np.mean(np.abs(row)) 
     std_value = np.std(np.abs(row)) 
     threshold = mean_value + factor * std_value
@@ -29,7 +29,7 @@ def adaptive_threshold_row(row, factor=2):
     return thresholded_row
 
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
-def identify_clusters(row, max_gap=15, min_cluster_size=30):
+def identify_clusters(row, max_gap, min_cluster_size):
     clusters = []
     current_cluster = []
     gap_count = 0
