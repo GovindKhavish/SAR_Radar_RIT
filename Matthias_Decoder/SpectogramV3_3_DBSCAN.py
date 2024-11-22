@@ -38,7 +38,9 @@ else:
 import sentinel1decoder
 
 #-----------------------------------------------------------------------------------------
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+# Mipur VH
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
@@ -65,21 +67,16 @@ radar_data = l0file.get_burst_data(selected_burst)
 
 # ------------------ Spectrogram Plot with Local Adaptive Thresholding -------------------
 def adaptive_threshold_local(spectrogram_data, threshold_factor):
-    # Calculate the mean and standard deviation
     mean_val = np.mean(spectrogram_data)
     std_val = np.std(spectrogram_data)
-    
-    # Compute the threshold based on mean and standard deviation
     threshold = mean_val + threshold_factor * std_val
-    
-    # Zero out intensity values below the threshold
+
     thresholded_data = np.where(spectrogram_data > threshold, spectrogram_data, 0)
     
     return threshold,thresholded_data
 
-
 # ------------------ Plotting -------------------
-idx_n = 1070
+idx_n = 300
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -94,7 +91,6 @@ plt.tight_layout()
 plt.pause(0.1)
 
 # Apply adaptive threshold
-#threshold, aa_db_filtered = Spectogram_Functions.adaptive_threshold(aa, factor=2)
 threshold, aa_db_filtered  = adaptive_threshold_local(aa, 2)
 
 # Plot the filtered spectrogram
@@ -119,10 +115,10 @@ time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero p
 frequency_indices = bb[time_freq_data[:, 0]]
 
 # DBSCAN clustering (same as before, but with proper frequency reference)
-dbscan = DBSCAN(eps=3, min_samples=10)
+dbscan = DBSCAN(eps=4.5, min_samples=15)
 clusters = dbscan.fit_predict(time_freq_data)
 
-# Plot thresholded
+# Plot threshold
 fig_thresh = plt.figure(13, figsize=(6, 6), clear=True)
 ax_thresh = fig_thresh.add_subplot(111)
 aa_db_filtered = 10 * np.log10(aa_db_filtered  + 1e-10) 
@@ -213,4 +209,64 @@ for cluster_id, params in cluster_params.items():
     print(f"  End Time Index: {params['end_time_index']}")
     print('---------------------------')
 
+# # Numpy Array conversition
+# cluster_params_array = np.array([[cluster_id, params['bandwidth'], params['center_frequency'], params['chirp_rate'], params['start_time_index'], params['end_time_index']]
+#                                  for cluster_id, params in cluster_params.items()])
+
+# Define the spectrogram parameters
+NFFT = 256
+noverlap = 200
+sampling_rate = fs  # Sampling rate of the I/Q data
+
+# Calculate time step in samples
+time_step = (NFFT - noverlap) / sampling_rate  # Time per spectrogram bin (in seconds)
+
+# Convert spectrogram time indices to I/Q data indices
+def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
+    return (time_indices * time_step * sampling_rate).astype(int)
+
+# Map cluster time indices to original I/Q data indices
+mapped_cluster_indices = {}
+for cluster_id, params in cluster_params.items():
+    start_time_idx = params['start_time_index']
+    end_time_idx = params['end_time_index']
+    iq_start_idx = spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
+    iq_end_idx = spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+    mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
+
+# Initialize isolated data with zeros
+isolated_radar_data = np.zeros_like(radar_section, dtype=complex)
+
+# Iterate over the I/Q data
+for idx in range(len(radar_section)):
+    for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
+        if iq_start_idx <= idx <= iq_end_idx:
+            isolated_radar_data[idx] = radar_section[idx]
+            break  # Stop checking once matched
+
+# Plot the full radar data
+plt.figure(figsize=(12, 6))
+
+# Full radar data plot
+plt.subplot(2, 1, 1)
+plt.plot(np.real(radar_section), label='Real Part', alpha=0.7)
+plt.plot(np.imag(radar_section), label='Imaginary Part', alpha=0.7)
+plt.title('Full Radar I/Q Data')
+plt.xlabel('Sample Index')
+plt.ylabel('Amplitude')
+plt.legend()
+plt.grid(True)
+
+# Isolated radar data plot
+plt.subplot(2, 1, 2)
+plt.plot(np.real(isolated_radar_data), label='Real Part', alpha=0.7)
+plt.plot(np.imag(isolated_radar_data), label='Imaginary Part', alpha=0.7)
+plt.title('Isolated Radar I/Q Data (Zero Outside Clusters)')
+plt.xlabel('Sample Index')
+plt.ylabel('Amplitude')
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
 plt.show()
+
