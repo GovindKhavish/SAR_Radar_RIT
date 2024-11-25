@@ -20,6 +20,7 @@ from scipy.ndimage import uniform_filter
 from scipy.signal import butter, filtfilt
 from scipy.ndimage import uniform_filter
 from sklearn.cluster import DBSCAN
+import pprint 
 import Spectogram_Functions
 #-----------------------------------------------------------------------------------------
 import sys
@@ -38,7 +39,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
@@ -77,28 +79,46 @@ def adaptive_threshold_local(spectrogram_data, threshold_factor):
 def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
     return (time_indices * time_step * sampling_rate).astype(int)
 
+# Global pulse counter
+global_pulse_number = 1
+
 # Define the range of rangelines you want to process
 start_idx = 100  # Start rangeline index
-end_idx = 1000   # End rangeline index
-fs = 46918402.800000004
+end_idx = 110   # End rangeline index
+fs = 46918402.800000004  # Sampling rate in Hz (samples per second)
+
+# Global dictionary to hold cluster parameters for all rangelines
+global_cluster_params = {}
 
 # Loop through the specified rangeline indices
 for idx_n in range(start_idx, end_idx + 1):
     # Extract the radar data for the current rangeline
     radar_section = radar_data[idx_n, :]
 
+    # Calculate slow time offset for this rangeline
+    slow_time_offset = idx_n / fs  # Time offset in seconds for the current rangeline
+
     # ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
     fig = plt.figure(11, figsize=(6, 6), clear=True)
     ax = fig.add_subplot(111)
     scale = 'dB'
-    aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
+    aa, bb, cc, dd = ax.specgram(
+        radar_data[idx_n, :], 
+        NFFT=256, 
+        Fs=fs / 1e6, 
+        detrend=None, 
+        window=np.hanning(256), 
+        scale=scale, 
+        noverlap=200, 
+        cmap='Greys'
+    )
 
     # Apply adaptive threshold
     threshold, aa_db_filtered = adaptive_threshold_local(aa, 2)
 
-    # DBSCAN Clustering
+    # ------------------ DBSCAN Clustering -------------------
     thresholded_aa_flat = aa_db_filtered.flatten()
-    
+
     # 2D array for clustering (time, frequency)
     time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero points
 
@@ -118,23 +138,9 @@ for idx_n in range(start_idx, end_idx + 1):
         print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
         continue
 
-    # ------------------ Extract Cluster Parameters -------------------
-    cluster_time_indices = {}
+    # ------------------ Assign Global Pulse Numbers and Adjusted Times -------------------
     for cluster_id in np.unique(clusters):
-        if cluster_id != -1:  # Noise
-            cluster_points = time_freq_data[clusters == cluster_id]
-            time_indices = cluster_points[:, 1]
-            start_time_index = np.min(time_indices)
-            end_time_index = np.max(time_indices)
-            cluster_time_indices[cluster_id] = (start_time_index, end_time_index)
-
-    # for cluster_id, (start, end) in cluster_time_indices.items():
-    #     print(f"Cluster {cluster_id} for rangeline {idx_n}: Start Time Index = {start}, End Time Index = {end}")
-
-    # ------------------ Extract and Process I/Q Data -------------------
-    cluster_params = {}
-    for cluster_id in np.unique(clusters):
-        if cluster_id != -1:
+        if cluster_id != -1:  # Skip noise
             cluster_points = time_freq_data[clusters == cluster_id]
             frequency_indices = bb[cluster_points[:, 0]]
             time_indices = cluster_points[:, 1]
@@ -142,16 +148,38 @@ for idx_n in range(start_idx, end_idx + 1):
             center_frequency = np.mean(frequency_indices)
             time_span = np.max(time_indices) - np.min(time_indices)
             chirp_rate = bandwidth / time_span if time_span != 0 else 0
-            cluster_params[cluster_id] = {
+
+            # Compute adjusted start and end times
+            start_time = np.min(time_indices) / fs  # Start time in seconds
+            end_time = np.max(time_indices) / fs    # End time in seconds
+            adjusted_start_time = start_time + slow_time_offset
+            adjusted_end_time = end_time + slow_time_offset
+
+            # Compute pulse duration
+            pulse_duration = adjusted_end_time - adjusted_start_time
+
+            # Create a unique key combining rangeline index and cluster ID
+            unique_key = (idx_n, cluster_id)  # Use both rangeline index and cluster ID as a tuple
+
+            # Assign cluster parameters along with the global pulse number
+            if unique_key not in global_cluster_params:
+                global_cluster_params[unique_key] = []
+
+            # Store parameters for each cluster, ensuring we keep all rangeline data
+            global_cluster_params[unique_key].append({
+                'pulse_number': global_pulse_number,  # Use global pulse number
                 'bandwidth': bandwidth,
                 'center_frequency': center_frequency,
                 'chirp_rate': chirp_rate,
                 'start_time_index': np.min(time_indices),
-                'end_time_index': np.max(time_indices)
-            }
+                'end_time_index': np.max(time_indices),
+                'adjusted_start_time': adjusted_start_time,  # Adjusted start time
+                'adjusted_end_time': adjusted_end_time,      # Adjusted end time
+                'pulse_duration': pulse_duration             # Pulse duration
+            })
+            global_pulse_number += 1  # Increment global pulse number for the next cluster
 
-    # Process I/Q data and mapping for isolated radar data
-    # Continue with the logic for mapping cluster time indices to I/Q data indices and isolating radar data.
+    # ------------------ Process I/Q Data -------------------
     # Define the spectrogram parameters
     NFFT = 256
     noverlap = 200
@@ -159,25 +187,68 @@ for idx_n in range(start_idx, end_idx + 1):
 
     # Calculate time step in samples
     time_step = (NFFT - noverlap) / sampling_rate  # Time per spectrogram bin (in seconds)
-    
 
     cluster_time_indices = {}
-    for cluster_id, params in cluster_params.items():
-        start_time_idx = params['start_time_index']
-        end_time_idx = params['end_time_index']
-        iq_start_idx = spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-        iq_end_idx = spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
-        cluster_time_indices[cluster_id] = (iq_start_idx, iq_end_idx)
+    for (rangeline_idx, cluster_id), params_list in global_cluster_params.items():
+        for params in params_list:
+            start_time_idx = params['start_time_index']
+            end_time_idx = params['end_time_index']
+            iq_start_idx = spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
+            iq_end_idx = spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+            cluster_time_indices[(rangeline_idx, cluster_id)] = (iq_start_idx, iq_end_idx)
 
     # Initialize isolated data with zeros
     isolated_radar_data = np.zeros_like(radar_section, dtype=complex)
 
     # Iterate over the I/Q data
     for idx in range(len(radar_section)):
-        for cluster_id, (iq_start_idx, iq_end_idx) in cluster_time_indices.items():
+        for (rangeline_idx, cluster_id), (iq_start_idx, iq_end_idx) in cluster_time_indices.items():
             if iq_start_idx <= idx <= iq_end_idx:
                 isolated_radar_data[idx] = radar_section[idx]
                 break  # Stop checking once matched
+
+
+# print("Cluster Parameters for All Pulses:")
+# pprint.pprint(global_cluster_params)
+
+
+
+# Initialize lists to store pulse number, bandwidth, and pulse duration
+pulse_numbers = []
+bandwidths = []
+durations = []
+
+# Extract values from global_cluster_params
+for unique_key, params_list in global_cluster_params.items():
+    for params in params_list:
+        pulse_numbers.append(params['pulse_number'])
+        bandwidths.append(params['bandwidth'])
+        durations.append(params['pulse_duration'])
+
+# Ensure data is sorted by pulse number for better visualization
+sorted_indices = np.argsort(pulse_numbers)
+pulse_numbers = np.array(pulse_numbers)[sorted_indices]
+bandwidths = np.array(bandwidths)[sorted_indices]
+durations = np.array(durations)[sorted_indices]
+
+# Plot Pulse Number vs Bandwidth
+plt.figure(figsize=(10, 5))
+plt.plot(pulse_numbers, bandwidths, marker='o', linestyle='-', color='b', label="Bandwidth")
+plt.title("Pulse Number vs Bandwidth")
+plt.xlabel("Pulse Number")
+plt.ylabel("Bandwidth (MHz)")
+plt.grid(True)
+plt.legend()
+
+# Plot Pulse Number vs Duration
+plt.figure(figsize=(10, 5))
+plt.plot(pulse_numbers, durations, marker='o', linestyle='-', color='g', label="Duration")
+plt.title("Pulse Number vs Pulse Duration")
+plt.xlabel("Pulse Number")
+plt.ylabel("Pulse Duration (us)")
+plt.grid(True)
+plt.legend()
+plt.show()
 
 
 # # Dictionary to store clusters and their specific information for each rangeline
