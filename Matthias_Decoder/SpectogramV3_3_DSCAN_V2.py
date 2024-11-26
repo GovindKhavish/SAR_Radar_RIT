@@ -83,8 +83,8 @@ def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
 global_pulse_number = 1
 
 # Define the range of rangelines you want to process
-start_idx = 100  # Start rangeline index
-end_idx = 110   # End rangeline index
+start_idx = 0  # Start rangeline index
+end_idx = 150   # End rangeline index
 fs = 46918402.800000004  # Sampling rate in Hz (samples per second)
 
 # Global dictionary to hold cluster parameters for all rangelines
@@ -126,7 +126,7 @@ for idx_n in range(start_idx, end_idx + 1):
     frequency_indices = bb[time_freq_data[:, 0]]
 
     # DBSCAN clustering
-    dbscan = DBSCAN(eps=3, min_samples=10)
+    dbscan = DBSCAN(eps=2, min_samples=10)
     clusters = dbscan.fit_predict(time_freq_data)
 
     # Number of clusters (noise is -1)
@@ -233,7 +233,7 @@ durations = np.array(durations)[sorted_indices]
 
 # Plot Pulse Number vs Bandwidth
 plt.figure(figsize=(10, 5))
-plt.plot(pulse_numbers, bandwidths, marker='o', linestyle='-', color='b', label="Bandwidth")
+plt.plot(pulse_numbers, bandwidths, linestyle='-', color='b', label="Bandwidth")
 plt.title("Pulse Number vs Bandwidth")
 plt.xlabel("Pulse Number")
 plt.ylabel("Bandwidth (MHz)")
@@ -242,7 +242,7 @@ plt.legend()
 
 # Plot Pulse Number vs Duration
 plt.figure(figsize=(10, 5))
-plt.plot(pulse_numbers, durations, marker='o', linestyle='-', color='g', label="Duration")
+plt.plot(pulse_numbers, durations, linestyle='-', color='g', label="Duration")
 plt.title("Pulse Number vs Pulse Duration")
 plt.xlabel("Pulse Number")
 plt.ylabel("Pulse Duration (us)")

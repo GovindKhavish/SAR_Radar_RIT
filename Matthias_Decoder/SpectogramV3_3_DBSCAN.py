@@ -76,7 +76,7 @@ def adaptive_threshold_local(spectrogram_data, threshold_factor):
     return threshold,thresholded_data
 
 # ------------------ Plotting -------------------
-idx_n = 108
+idx_n = 150
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -115,7 +115,7 @@ time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero p
 frequency_indices = bb[time_freq_data[:, 0]]
 
 # DBSCAN clustering (same as before, but with proper frequency reference)
-dbscan = DBSCAN(eps=4.5, min_samples=15)
+dbscan = DBSCAN(eps=2, min_samples=12)
 clusters = dbscan.fit_predict(time_freq_data)
 
 # Plot threshold
@@ -137,7 +137,6 @@ ax_thresh.set_ylabel('Freq [MHz]', fontweight='bold')
 ax_thresh.set_title(f'Filtered Spectrogram with DBSCAN (Threshold: {round(10 * np.log10(threshold), 2)} dB)', fontweight='bold')
 ax_thresh.legend()
 plt.tight_layout()
-
 
 # Number of clusters (noise is -1)
 num_clusters = len(np.unique(clusters)) - 1 
@@ -249,8 +248,8 @@ plt.figure(figsize=(12, 6))
 
 # Full radar data plot
 plt.subplot(2, 1, 1)
-plt.plot(np.real(radar_section), label='Real Part', alpha=0.7)
-plt.plot(np.imag(radar_section), label='Imaginary Part', alpha=0.7)
+plt.plot(np.real(radar_section), label='Real Part', alpha=0.7, linestyle='-')
+plt.plot(np.imag(radar_section), label='Imaginary Part', alpha=0.7, linestyle='-')
 plt.title('Full Radar I/Q Data')
 plt.xlabel('Sample Index')
 plt.ylabel('Amplitude')
@@ -259,8 +258,8 @@ plt.grid(True)
 
 # Isolated radar data plot
 plt.subplot(2, 1, 2)
-plt.plot(np.real(isolated_radar_data), label='Real Part', alpha=0.7)
-plt.plot(np.imag(isolated_radar_data), label='Imaginary Part', alpha=0.7)
+plt.plot(np.real(isolated_radar_data), label='Real Part', alpha=0.7, linestyle='-')
+plt.plot(np.imag(isolated_radar_data), label='Imaginary Part', alpha=0.7, linestyle='-')
 plt.title('Isolated Radar I/Q Data (Zero Outside Clusters)')
 plt.xlabel('Sample Index')
 plt.ylabel('Amplitude')
@@ -269,4 +268,5 @@ plt.grid(True)
 
 plt.tight_layout()
 plt.show()
+
 
