@@ -10,8 +10,6 @@ import logging
 import math
 import cmath
 import struct
-import skimage
-import Spectogram_Functions
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import matplotlib.gridspec as gridspec
@@ -20,7 +18,10 @@ from scipy.signal import spectrogram
 from scipy.signal import windows
 from scipy.ndimage import uniform_filter
 from scipy.signal import butter, filtfilt
+from scipy.ndimage import uniform_filter
 from sklearn.cluster import DBSCAN
+import pprint 
+import Spectogram_Functions
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path, PurePath
@@ -37,22 +38,18 @@ else:
 
 import sentinel1decoder
 
-#-----------------------------------------------------------------------------------------
-# Mipur VH
+# Mipur VH Filepath
 #filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
-# Level 0 File
 l0file = sentinel1decoder.Level0File(inputfile)
 
-# Metadata and Burst Information
 sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-# Select the Burst
 selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
@@ -62,138 +59,99 @@ while selection['Signal Type'].unique()[0] != 0:
 
 headline = f'Sentinel-1 (burst {selected_burst}): '
 
-# Raw I/Q Sensor Data
 radar_data = l0file.get_burst_data(selected_burst)
-
-# ------------------ Spectrogram Plot with Local Adaptive Thresholding -------------------
-def adaptive_threshold_local(data, threshold_factor):
-    mean_val = np.mean(data)
-    std_val = np.std(data)
-    threshold = mean_val + threshold_factor * std_val
-
-    thresholded_data = np.where(data > threshold, data, 0)
+#---------------------------- CFAR Function -----------------------------#
+def create_2d_mask(vertical_guard_cells, vertical_avg_cells, horizontal_guard_cells, horizontal_avg_cells):
+    vertical_size = 2 * (vertical_guard_cells + vertical_avg_cells) + 1
+    horizontal_size = 2 * (horizontal_guard_cells + horizontal_avg_cells) + 1
     
-    return threshold,thresholded_data
+    mask = np.zeros((vertical_size, horizontal_size))
+    
+    center_row = vertical_guard_cells + vertical_avg_cells
+    center_col = horizontal_guard_cells + horizontal_avg_cells
+
+    total_avg_cells = (vertical_size*horizontal_size) - ((2*vertical_guard_cells+1)* (horizontal_guard_cells*2 +1))
+    
+    mask[:center_row - vertical_guard_cells, :] = 1/(total_avg_cells)
+    mask[center_row + vertical_guard_cells + 1:, :] = 1/(total_avg_cells)
+    mask[:, :center_col - horizontal_guard_cells] = 1/(total_avg_cells)
+    mask[:, center_col + horizontal_guard_cells + 1:] = 1/(total_avg_cells)
+    
+    mask[center_row - vertical_guard_cells:center_row + vertical_guard_cells + 1, 
+         center_col - horizontal_guard_cells:center_col + horizontal_guard_cells + 1] = 0
+    
+    return mask
+
+def get_total_average_cells(vertical_guard_cells, vertical_avg_cells, horizontal_guard_cells, horizontal_avg_cells):
+    vertical_size = 2 * (vertical_guard_cells + vertical_avg_cells) + 1
+    horizontal_size = 2 * (horizontal_guard_cells + horizontal_avg_cells) + 1
+    total_avg_cells = (vertical_size*horizontal_size) - ((2*vertical_guard_cells+1)* (horizontal_guard_cells*2 +1))
+    #print(total_avg_cells)
+    return total_avg_cells
+
+### Padding ###
+
+def create_2d_padded_mask(radar_data, cfar_mask):
+    
+    radar_rows, radar_cols = radar_data.shape
+    mask_rows, mask_cols = cfar_mask.shape
+
+    padded_mask = np.zeros((radar_rows, radar_cols))
+    padded_mask[:mask_rows, :mask_cols] = cfar_mask
+
+    return padded_mask
+
+def set_alpha(total_avg_cells,alarm_rate):
+    alpha = total_avg_cells*(alarm_rate**(-1/total_avg_cells)-1)
+    return alpha
+
+def cfar_method(radar_data, cfar_mask, threshold_multiplier):
+    rows, cols = radar_data.shape
+    threshold_map = np.zeros_like(radar_data)
+
+    padded_mask = create_2d_padded_mask(radar_data,cfar_mask)
+
+    fft_data = np.fft.fft2(radar_data)
+    fft_mask = np.fft.fft2(padded_mask)
+    
+    fft_threshold = fft_data * fft_mask
+    
+    threshold_map = np.abs(np.fft.ifft2(np.fft.fftshift(fft_threshold)))
+    threshold_map *= threshold_multiplier
+    
+    return threshold_map
 
 
-def adaptive_threshold_sliding_window(data, window_size, threshold_factor):
-    mean_filter = uniform_filter(data, size=window_size)
-    threshold = mean_filter + threshold_factor
-    thresholded_data = np.where(data > threshold, data, 0)
-    
-    return threshold, thresholded_data
+### Detection ###
+def detect_targets(radar_data, threshold_map):
+    target_map = np.zeros_like(radar_data)
+    len_row, len_col = radar_data.shape 
 
-import numpy as np
-from scipy.ndimage import gaussian_filter
-
-def quick_preprocessing(data, sigma=1, percentile=90):
-    """
-    Lightweight preprocessing pipeline for spectrograms.
+    hits = 0
+    for row in range(len_row):
+        for col in range(len_col):
+            if np.abs(radar_data[row, col]) > threshold_map[row, col]:
+                target_map[row, col] = 1
+                hits += 1
+            else:
+                target_map[row, col] = 0
     
-    Parameters:
-    - data: 2D numpy array of spectrogram data
-    - noise_floor: Minimum intensity value (dB) to suppress low noise
-    - sigma: Gaussian smoothing factor
-    - percentile: Percentile for adaptive thresholding
-    """
-    # Step 1: Suppress noise below a floor
-    noise_floor = -50#np.mean(aa)
-    print(noise_floor)
-    data[data < 10 ** (noise_floor / 10)] = 10 ** (noise_floor / 10)
-
-    # Step 2: Apply logarithmic scaling
-    log_data = 10 * np.log10(data)
-
-    # Step 3: Smooth the spectrogram with a Gaussian filter
-    smoothed_data = gaussian_filter(log_data, sigma=sigma)
-
-    # Step 4: Perform percentile-based adaptive thresholding
-    threshold = np.percentile(smoothed_data, percentile)
-    thresholded_data = np.where(smoothed_data > threshold, smoothed_data, 0)
-    
-    return threshold,thresholded_data
-
-import numpy as np
-from scipy.ndimage import gaussian_filter, median_filter
-from skimage.morphology import closing, disk
-
-def spectral_subtraction(data, noise_estimation_factor=0.5):
-    """
-    Performs spectral subtraction to remove background noise.
-    
-    Parameters:
-    - data: 2D numpy array of spectrogram data.
-    - noise_estimation_factor: Factor for estimating noise (0.5 typically).
-    
-    Returns:
-    - enhanced_data: The spectrogram with noise reduced.
-    """
-    noise_estimation = np.min(data, axis=0)  # Estimate background noise (min value per time slice)
-    enhanced_data = data - noise_estimation_factor * noise_estimation
-    enhanced_data = np.clip(enhanced_data, 0, None)  # Remove any negative values (artifact)
-    return enhanced_data
-
-def adaptive_local_thresholding(data, window_size=5, threshold_factor=2):
-    """
-    Applies local adaptive thresholding based on mean and std in local windows.
-    
-    Parameters:
-    - data: 2D numpy array of spectrogram data.
-    - window_size: Size of the local window for computing mean and std.
-    - threshold_factor: Factor to scale the threshold based on local std.
-    
-    Returns:
-    - thresholded_data: Data after applying adaptive thresholding.
-    """
-    local_mean = median_filter(data, size=window_size)
-    local_std = gaussian_filter(data, sigma=window_size)
-    
-    threshold = local_mean + threshold_factor * local_std
-    thresholded_data = np.where(data > threshold, data, 0)
-    return thresholded_data
-
-def enhanced_preprocessing(data, noise_estimation_factor=0.5, window_size=5, threshold_factor=2):
-    """
-    Enhanced preprocessing pipeline for spectrograms using spectral subtraction
-    and adaptive thresholding.
-    
-    Parameters:
-    - data: 2D numpy array of spectrogram data.
-    - noise_estimation_factor: Factor for estimating noise.
-    - window_size: Size of the local window for thresholding.
-    - threshold_factor: Factor for adaptive thresholding.
-    
-    Returns:
-    - processed_data: Preprocessed spectrogram ready for DBSCAN.
-    """
-    # Step 1: Spectral Subtraction
-    enhanced_data = spectral_subtraction(data, noise_estimation_factor=noise_estimation_factor)
-    
-    # Step 2: Apply adaptive thresholding
-    thresholded_data = adaptive_local_thresholding(enhanced_data, window_size=window_size, threshold_factor=threshold_factor)
-    
-    # Optional: Clean up using morphological closing to remove small isolated points
-    cleaned_data = closing(thresholded_data, disk(3))  # 3 is the disk size for morphological operation
-    
-    return cleaned_data
+    print(f"Number of detections: {hits}")
+    return target_map
 
 
-# ------------------ Plotting -------------------
-idx_n = 150
+#------------------------ Apply CFAR filtering --------------------------------
+# Spectrogram plot
+idx_n = 1070
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
-# fig = plt.figure(10, figsize=(6, 6), clear=True)
-# ax = fig.add_subplot(111)
-# ax.plot(np.abs(radar_section), label=f'abs{idx_n}')
-# ax.plot(np.real(radar_section), label=f'Re{idx_n}')
-# ax.plot(np.imag(radar_section), label=f'Im{idx_n}')
-# ax.legend()
-# ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
-# ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
-# ax.set_ylabel('|Amplitude|', fontweight='bold')
-# plt.tight_layout()
-# plt.pause(0.1)
+# Process the data using the CFAR function
+alarm_rate = 1e-9
+num_guard_cells = 10
+num_reference_cells = 5 
+threshold_factor = set_alpha(2*num_reference_cells,alarm_rate)
+
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
@@ -205,23 +163,70 @@ ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 
-# Apply adaptive threshold
-#threshold, aa_db_filtered  = adaptive_threshold_sliding_window(aa, 7,2)
-threshold, aa_db_filtered  = adaptive_threshold_local(aa,2)
-#threshold, aa_db_filtered  = quick_preprocessing(aa)
-#aa_db_filtered  = enhanced_preprocessing(aa)
+# Radar data dimensions
+time_size = aa.shape[1] # Freq
+freq_size = aa.shape[0] # Time
 
-# Plot the filtered spectrogram
-fig = plt.figure(12, figsize=(6, 6), clear=True)
-ax = fig.add_subplot(111)
-dd = ax.imshow(10 * np.log10(aa_db_filtered), aspect='auto', origin='lower', cmap='Greys', extent=[0, aa.shape[1], bb[0], bb[-1]])
-cbar = plt.colorbar(dd, ax=ax)
-cbar.set_label('Intensity [dB]')
-ax.set_xlabel('Time [us]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Filtered Spectrogram (Threshold:  dB)', fontweight='bold')
+
+# Create 2D Mask
+#vert_guard,vert_avg,hori_Guard,hori_avg
+vert_guard = 15
+vert_avg = 20
+hori_guard = 25
+hori_avg = 20
+alarm_rate = 1e-9
+
+cfar_mask = create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
+
+# # Plot the CFAR Mask
+# plt.figure(figsize=(2, 10))
+# plt.imshow(cfar_mask, interpolation='none', aspect='auto')
+# plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+# plt.colorbar(label='Filter Amplitude')
+
+padded_mask = create_2d_padded_mask(aa,cfar_mask)
+
+# Plot the Padded Mask
+# plt.figure(figsize=(2, 10))
+# plt.imshow(padded_mask, interpolation='none', aspect='auto')
+# plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+# plt.colorbar(label='Filter Amplitude')
+
+alpha = set_alpha(get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
+print("Threshold Value: ",alpha)
+
+# thres_map = cfar_method(aa,cfar_mask,alpha)
+thres_map = cfar_method(aa,padded_mask,alpha)
+
+# Plot the Threshold Map
+plt.figure(figsize=(10, 5))
+plt.imshow(thres_map, interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
+plt.title('Threshold map')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
-plt.pause(0.1)
+
+# Detect the targets using the spectrogram data
+aa_db_filtered = detect_targets(aa, thres_map)
+
+# Plot the Target Map
+plt.figure(figsize=(10, 5))
+plt.imshow(aa_db_filtered, interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
+plt.title('Targets')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Filter Amplitude')
+plt.tight_layout()
+plt.show()
+
+# ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
+def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
+    return (time_indices * time_step * sampling_rate).astype(int)
 
 thresholded_aa_flat = aa_db_filtered .flatten()
 
@@ -232,7 +237,7 @@ time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero p
 frequency_indices = bb[time_freq_data[:, 0]]
 
 # DBSCAN
-dbscan = DBSCAN(eps=2, min_samples=10)
+dbscan = DBSCAN(eps=5, min_samples=5)
 clusters = dbscan.fit_predict(time_freq_data)
 
 # Plot threshold
@@ -369,5 +374,3 @@ plt.grid(True)
 
 plt.tight_layout()
 plt.show()
-
-

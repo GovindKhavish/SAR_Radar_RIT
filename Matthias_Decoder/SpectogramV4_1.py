@@ -113,8 +113,7 @@ for idx_n in range(start_rangeline, end_rangeline + 1):
     noverlap = 200
     sampling_rate = fs  # Sampling rate of the I/Q data
 
-    # Calculate time step in samples
-    time_step = (NFFT - noverlap) / sampling_rate  # Time per spectrogram bin (in seconds)
+    time_step = (NFFT - noverlap) / sampling_rate  #  (seconds)
 
     mapped_cluster_indices = {}
     for cluster_id, params in cluster_params.items():

@@ -59,6 +59,7 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 # Raw I/Q Sensor Data
 radar_data = l0file.get_burst_data(selected_burst)
 
+
 # Inline CFAR function
 def set_alpha(total_avg_cells,alarm_rate):
     alpha = total_avg_cells*(alarm_rate**(-1/total_avg_cells)-1)
@@ -83,6 +84,30 @@ def cfar_1d(data, num_guard_cells, num_reference_cells, threshold_factor):
         #     thresholded_data[i] = 1#data[i]
         # else:
         #     thresholded_data[i] = 0
+    
+    return thresholded_data
+
+
+def cfar_2d(data, num_guard_cells, num_reference_cells, threshold_factor):
+    
+    for k in range(len(data)):
+        thresholded_data = np.zeros_like(data[k])
+        num_cells = len(data)
+
+        for i in range(num_reference_cells + num_guard_cells, num_cells - (num_reference_cells + num_guard_cells)):
+            lagging_cells = data[i - num_reference_cells - num_guard_cells:i - num_guard_cells]
+            leading_cells = data[i + num_guard_cells + 1:i + num_guard_cells + num_reference_cells + 1]
+            
+            noise_level = np.sum(np.abs(np.concatenate((leading_cells, lagging_cells)))) / (2 * num_reference_cells)
+            thresholded_data[i] = np.abs(threshold_factor * noise_level)
+            # print('\n')
+            # print(np.abs(data[i]))
+            # print(np.abs(threshold_factor * noise_level))
+
+            # if np.abs(data[i]) > np.abs(threshold_factor * noise_level):
+            #     thresholded_data[i] = 1#data[i]
+            # else:
+            #     thresholded_data[i] = 0
     
     return thresholded_data
 
@@ -127,34 +152,30 @@ alarm_rate = 1e-9
 num_guard_cells = 100
 num_reference_cells = 1000 
 threshold_factor = set_alpha(2*num_reference_cells,alarm_rate)
-print(threshold_factor)
+#print(threshold_factor)
 #adar_data_thresholded = cfar_1d(radar_section, num_guard_cells, num_reference_cells, threshold_factor)
-radar_data_thresholded = cfar_detector(radar_section, num_guard_cells, num_reference_cells, alarm_rate)
-
-
-fig = plt.figure(10, figsize=(6, 6), clear=True)
-ax = fig.add_subplot(111)
-#ax.plot(np.abs(radar_data_thresholded), label=f'abs{idx_n}')
-ax.plot(np.real(radar_data_thresholded), label=f'Re{idx_n}')
-#ax.plot(np.imag(radar_data_thresholded), label=f'Im{idx_n}')
-ax.legend()
-ax.set_title(f'{headline} Thresholded', fontweight='bold')
-ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
-ax.set_ylabel('|Amplitude|', fontweight='bold')
-plt.tight_layout()
-plt.pause(0.1)
+#adar_data_thresholded = cfar_detector(radar_section, num_guard_cells, num_reference_cells, alarm_rate)
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
-ax.plot(np.abs(radar_section), label=f'abs{idx_n}')
-#ax.plot(np.real(radar_section), label=f'Re{idx_n}')
-#ax.plot(np.imag(radar_section), label=f'Im{idx_n}')
-ax.legend()
-ax.set_title(f'{headline} Raw I/Q Sensor Output', fontweight='bold')
-ax.set_xlabel('Fast Time (down range) [samples]', fontweight='bold')
-ax.set_ylabel('|Amplitude|', fontweight='bold')
+scale = 'dB'
+aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
+plt.pause(0.1)
 plt.show()
+
+radar_data_thresholded = cfar_detector(aa, num_guard_cells, num_reference_cells, alarm_rate)
+
+plt.figure(figsize=(8, 6))
+plt.imshow(radar_data_thresholded, cmap='hot', aspect='auto')
+plt.title("Detected Targets")
+plt.xlabel('Columns (Fast Time)')
+plt.ylabel('Rows (Slow Time)')
+plt.colorbar(label='Detection')
+plt.tight_layout()
 
 # fig = plt.figure(11, figsize=(6, 6), clear=True)
 # ax = fig.add_subplot(111)
@@ -185,5 +206,4 @@ plt.show()
 # ax.set_ylabel('Freq [MHz]', fontweight='bold')
 # ax.set_title(f'Filtered Spectrogram (Threshold: {round(10*np.log10(threshold), 2)} dB)', fontweight='bold')
 # plt.tight_layout()
-# plt.show()
 
