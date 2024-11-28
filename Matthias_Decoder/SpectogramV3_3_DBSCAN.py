@@ -113,9 +113,6 @@ def quick_preprocessing(data, sigma=1, percentile=90):
     
     return threshold,thresholded_data
 
-import numpy as np
-from scipy.ndimage import gaussian_filter, median_filter
-from skimage.morphology import closing, disk
 
 def spectral_subtraction(data, noise_estimation_factor=0.5):
     """

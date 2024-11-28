@@ -39,8 +39,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
@@ -142,7 +142,7 @@ def detect_targets(radar_data, threshold_map):
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1070
+idx_n = 1427
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -163,6 +163,28 @@ ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 
+# -------------------- Adaptive Threshold on Intensity Data -----------------------------#
+# Define the adaptive thresholding function
+def adaptive_threshold(array, factor=2):
+    mean_value = np.mean(array)
+    std_value = np.std(array)
+    threshold = mean_value + factor * std_value
+    thresholded_array = np.where(array < threshold, 0, array)
+    
+    return threshold,thresholded_array
+
+threshold,aa = adaptive_threshold(aa)
+
+fig = plt.figure(12, figsize=(6, 6), clear=True)
+ax = fig.add_subplot(111)
+dd = ax.imshow(10 * np.log10(aa), aspect='auto', origin='lower', cmap='Greys')
+cbar = plt.colorbar(dd, ax=ax)
+cbar.set_label('Intensity [dB]')
+ax.set_xlabel('Time [us]', fontweight='bold')
+ax.set_ylabel('Freq [MHz]', fontweight='bold')
+ax.set_title(f'Filtered Spectrogram (Threshold: {round(10*np.log10(threshold),2)} dB)', fontweight='bold')
+plt.tight_layout()
+
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
 freq_size = aa.shape[0] # Time
@@ -171,9 +193,9 @@ freq_size = aa.shape[0] # Time
 # Create 2D Mask
 #vert_guard,vert_avg,hori_Guard,hori_avg
 vert_guard = 15
-vert_avg = 20
+vert_avg = 30
 hori_guard = 25
-hori_avg = 20
+hori_avg = 30
 alarm_rate = 1e-9
 
 cfar_mask = create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
@@ -216,13 +238,12 @@ aa_db_filtered = detect_targets(aa, thres_map)
 
 # Plot the Target Map
 plt.figure(figsize=(10, 5))
-plt.imshow(aa_db_filtered, interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
+plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
 plt.title('Targets')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
 plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
-plt.show()
 
 # ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
 def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
@@ -237,7 +258,7 @@ time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero p
 frequency_indices = bb[time_freq_data[:, 0]]
 
 # DBSCAN
-dbscan = DBSCAN(eps=5, min_samples=5)
+dbscan = DBSCAN(eps=6, min_samples=20)
 clusters = dbscan.fit_predict(time_freq_data)
 
 # Plot threshold
@@ -246,11 +267,11 @@ ax_thresh = fig_thresh.add_subplot(111)
 aa_db_filtered = 10 * np.log10(aa_db_filtered  + 1e-10) 
 dd = ax_thresh.imshow(aa_db_filtered, aspect='auto', origin='lower', cmap='Greys')
 
-# Plot clusters 
-for i, cluster in enumerate(np.unique(clusters)):
-    if cluster != -1:  # -1 is noise
-        cluster_points = time_freq_data[clusters == cluster]
-        ax_thresh.scatter(cluster_points[:, 1], cluster_points[:, 0], label=f'Cluster {i}', s=2)
+
+
+for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise here
+    cluster_points = time_freq_data[clusters == cluster]
+    ax_thresh.scatter(cluster_points[:, 1], cluster_points[:, 0], label=f'Cluster {i}', s=2)
 
 cbar = plt.colorbar(dd, ax=ax_thresh)
 cbar.set_label('Intensity [dB]')
@@ -259,12 +280,11 @@ ax_thresh.set_ylabel('Freq [MHz]', fontweight='bold')
 ax_thresh.set_title(f'Filtered Spectrogram with DBSCAN (Threshold: dB)', fontweight='bold')
 ax_thresh.legend()
 plt.tight_layout()
-#{round(10 * np.log10(threshold), 2)}
 
 
-# Number of clusters (noise is -1)
-num_clusters = len(np.unique(clusters)) - 1 
-print(f"Number of clusters (excluding noise): {num_clusters}")
+# Number of clusters (excluding noise)
+num_clusters = len(np.unique(clusters[clusters != -1]))
+print(f"Number of clusters: {num_clusters}")
 
 # ------------------ Start and End Time for Each Cluster -------------------
 cluster_time_indices = {}

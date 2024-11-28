@@ -117,7 +117,7 @@ plt.show()
 
 # -------------------- Spectogram used -----------------------------#
 # Parameters
-idx_n = 1070
+idx_n = 1428
 fs = 46918402.800000004
 
 radar_section = radar_data_thresholded[idx_n,:]#[:,idx_n]

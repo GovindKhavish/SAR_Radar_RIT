@@ -39,8 +39,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
@@ -145,8 +145,8 @@ def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
 
 global_pulse_number = 1
 
-start_idx = 0 
-end_idx = 100  
+start_idx = 1427 
+end_idx = 1430  
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -169,6 +169,18 @@ for idx_n in range(start_idx, end_idx + 1):
         noverlap=200, 
         cmap='Greys'
     )
+
+    # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
+    # Define the adaptive thresholding function
+    def adaptive_threshold(array, factor=2):
+        mean_value = np.mean(array)
+        std_value = np.std(array)
+        threshold = mean_value + factor * std_value
+        thresholded_array = np.where(array < threshold, 0, array)
+        
+        return threshold,thresholded_array
+
+    threshold,aa = adaptive_threshold(aa)
 
     #------------------------ Apply CFAR filtering --------------------------------
     # Process the data using the CFAR function
@@ -219,7 +231,6 @@ for idx_n in range(start_idx, end_idx + 1):
     # Detect the targets using the spectrogram data
     aa_db_filtered = detect_targets(aa, thres_map)
 
-
     # ------------------ DBSCAN Clustering -------------------
     thresholded_aa_flat = aa_db_filtered.flatten()
 
@@ -227,19 +238,19 @@ for idx_n in range(start_idx, end_idx + 1):
     frequency_indices = bb[time_freq_data[:, 0]]
 
     # DBSCAN
-     # Check if targets are detected
+    # Check if targets are detected
     if time_freq_data.shape[0] == 0:
-        print(f"No targets detected for rangeline {idx_n}. Exiting the loop.")
+        print(f"No targets detected for rangeline {idx_n}.")
         continue  
     else: 
-        dbscan = DBSCAN(eps=2, min_samples=10)
+        dbscan = DBSCAN(eps=5, min_samples=5)
         clusters = dbscan.fit_predict(time_freq_data)
 
-        num_clusters = len(np.unique(clusters)) - 1
+        num_clusters = len(np.unique(clusters[clusters != -1]))
         print(f"Number of clusters for rangeline {idx_n}: {num_clusters}")
 
         # ------------------ Skip Feature Extraction if More Than 2 Clusters -------------------
-        if num_clusters > 2:
+        if (num_clusters > 2 or num_clusters == 0):
             print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
             continue
 
