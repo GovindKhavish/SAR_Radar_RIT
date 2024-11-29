@@ -142,7 +142,7 @@ def detect_targets(radar_data, threshold_map):
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1427
+idx_n = 36
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 

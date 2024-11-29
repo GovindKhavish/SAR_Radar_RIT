@@ -145,8 +145,8 @@ def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
 
 global_pulse_number = 1
 
-start_idx = 1427 
-end_idx = 1430  
+start_idx = 0 
+end_idx = 1500  
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -197,9 +197,9 @@ for idx_n in range(start_idx, end_idx + 1):
     # Create 2D Mask
     #vert_guard,vert_avg,hori_Guard,hori_avg
     vert_guard = 15
-    vert_avg = 20
+    vert_avg = 30
     hori_guard = 25
-    hori_avg = 20
+    hori_avg = 30
     alarm_rate = 1e-9
 
     cfar_mask = create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
@@ -243,7 +243,7 @@ for idx_n in range(start_idx, end_idx + 1):
         print(f"No targets detected for rangeline {idx_n}.")
         continue  
     else: 
-        dbscan = DBSCAN(eps=5, min_samples=5)
+        dbscan = DBSCAN(eps=6, min_samples=20)
         clusters = dbscan.fit_predict(time_freq_data)
 
         num_clusters = len(np.unique(clusters[clusters != -1]))
@@ -325,18 +325,23 @@ for idx_n in range(start_idx, end_idx + 1):
 pulse_numbers = []
 bandwidths = []
 durations = []
+center_frequencies = []  # List to store center frequencies
 
 for unique_key, params_list in global_cluster_params.items():
     for params in params_list:
         pulse_numbers.append(params['pulse_number'])
         bandwidths.append(params['bandwidth'])
         durations.append(params['pulse_duration'])
+        center_frequencies.append(params['center_frequency'])  # Extract center frequency
 
+# Sort based on pulse numbers
 sorted_indices = np.argsort(pulse_numbers)
 pulse_numbers = np.array(pulse_numbers)[sorted_indices]
 bandwidths = np.array(bandwidths)[sorted_indices]
 durations = np.array(durations)[sorted_indices]
+center_frequencies = np.array(center_frequencies)[sorted_indices]
 
+# Plot for Bandwidth
 plt.figure(figsize=(10, 5))
 plt.plot(pulse_numbers, bandwidths, linestyle='-', color='b', label="Bandwidth")
 plt.title("Pulse Number vs Bandwidth")
@@ -345,6 +350,7 @@ plt.ylabel("Bandwidth (MHz)")
 plt.grid(True)
 plt.legend()
 
+# Plot for Pulse Duration
 plt.figure(figsize=(10, 5))
 plt.plot(pulse_numbers, durations, linestyle='-', color='g', label="Duration")
 plt.title("Pulse Number vs Pulse Duration")
@@ -352,4 +358,14 @@ plt.xlabel("Pulse Number")
 plt.ylabel("Pulse Duration (us)")
 plt.grid(True)
 plt.legend()
+
+# Plot for Center Frequency
+plt.figure(figsize=(10, 5))
+plt.plot(pulse_numbers, center_frequencies, linestyle='-', color='r', label="Center Frequency")
+plt.title("Pulse Number vs Center Frequency")
+plt.xlabel("Pulse Number")
+plt.ylabel("Center Frequency (MHz)")
+plt.grid(True)
+plt.legend()
+
 plt.show()
