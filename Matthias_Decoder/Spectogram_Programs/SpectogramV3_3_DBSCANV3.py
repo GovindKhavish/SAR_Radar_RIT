@@ -21,7 +21,6 @@ from scipy.signal import butter, filtfilt
 from scipy.ndimage import uniform_filter
 from sklearn.cluster import DBSCAN
 import pprint 
-import Spectogram_Functions
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path, PurePath

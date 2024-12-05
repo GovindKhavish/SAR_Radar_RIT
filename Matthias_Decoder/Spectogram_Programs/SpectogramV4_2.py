@@ -5,23 +5,20 @@
 from __future__ import division, print_function, unicode_literals # v3line15
 
 import pandas as pd
+import os
+import sqlite3
 import numpy as np
 import logging
 import math
 import cmath
 import struct
+import polars as pl
+import Spectogram_Functions
 import matplotlib.pyplot as plt
 from matplotlib import colors
-import matplotlib.gridspec as gridspec
-from scipy.interpolate import interp1d
 from scipy.signal import spectrogram
-from scipy.signal import windows
-from scipy.ndimage import uniform_filter
-from scipy.signal import butter, filtfilt
 from scipy.ndimage import uniform_filter
 from sklearn.cluster import DBSCAN
-import pprint 
-import Spectogram_Functions
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path, PurePath
@@ -39,8 +36,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
@@ -146,7 +143,7 @@ def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
 global_pulse_number = 1
 
 start_idx = 0 
-end_idx = 1500  
+end_idx = 100  
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -369,3 +366,70 @@ plt.grid(True)
 plt.legend()
 
 plt.show()
+
+db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases" 
+db_name = "pulse_characteristics_Mipur.db"
+db_path = os.path.join(db_folder, db_name)
+
+if not os.path.exists(db_folder):
+    os.makedirs(db_folder)
+    print(f"Folder '{db_folder}' created.")
+
+# Database connection
+conn = sqlite3.connect(db_path)
+
+# Prepare the data for storage
+pulse_details = {
+    "pulse_number": [],
+    "bandwidth": [],
+    "center_frequency": [],
+    "chirp_rate": [],
+    "start_time_index": [],
+    "end_time_index": [],
+    "adjusted_start_time": [],
+    "adjusted_end_time": [],
+    "pulse_duration": []
+}
+
+for unique_key, params_list in global_cluster_params.items():
+    for params in params_list:
+        pulse_details["pulse_number"].append(params["pulse_number"])
+        pulse_details["bandwidth"].append(params["bandwidth"])
+        pulse_details["center_frequency"].append(params["center_frequency"])
+        pulse_details["chirp_rate"].append(params["chirp_rate"])
+        pulse_details["start_time_index"].append(params["start_time_index"])
+        pulse_details["end_time_index"].append(params["end_time_index"])
+        pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
+        pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
+        pulse_details["pulse_duration"].append(params["pulse_duration"])
+
+pulse_data_df = pl.DataFrame(pulse_details)
+
+with conn:
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS pulse_data (
+        pulse_number INTEGER PRIMARY KEY,
+        bandwidth REAL,
+        center_frequency REAL,
+        chirp_rate REAL,
+        start_time_index INTEGER,
+        end_time_index INTEGER,
+        adjusted_start_time REAL,
+        adjusted_end_time REAL,
+        pulse_duration REAL
+    )
+    """)
+
+    conn.executemany(
+        """INSERT OR REPLACE INTO pulse_data (
+            pulse_number, bandwidth, center_frequency, chirp_rate,
+            start_time_index, end_time_index,
+            adjusted_start_time, adjusted_end_time, pulse_duration
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        pulse_data_df.to_numpy().tolist() 
+    )
+
+conn.close()
+print(f"Detailed pulse data stored in SQLite3 database at {db_path}.")
+
