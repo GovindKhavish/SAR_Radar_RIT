@@ -2,27 +2,11 @@
 # _common_imports_v3_py.py ]
 #
 #=========================================================================================
-from __future__ import division, print_function, unicode_literals # v3line15
+from __future__ import division, print_function, unicode_literals
 
-import pandas as pd
 import numpy as np
-import logging
-import math
-import cmath
-import struct
-import matplotlib.pyplot as plt
-from matplotlib import colors
-import matplotlib.gridspec as gridspec
-from scipy.interpolate import interp1d
-from scipy.signal import spectrogram
-from scipy.signal import windows
-from scipy.signal import butter, filtfilt
 from sklearn.cluster import DBSCAN
-#-----------------------------------------------------------------------------------------
-import sys
-from pathlib import Path, PurePath
-#-----------------------------------------------------------------------------------------
-
+#----------------------------------------------------------------------------------------#
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
@@ -31,7 +15,7 @@ def adaptive_threshold(array, factor=2):
     thresholded_array = np.where(array < threshold, 0, array)
         
     return threshold,thresholded_array
-#----------------------------------------------------------------------------------------
+#----------------------------------------------------------------------------------------#
 #---------------------------- CFAR Function ---------------------------------------------#
 def create_2d_mask(vertical_guard_cells, vertical_avg_cells, horizontal_guard_cells, horizontal_avg_cells):
     vertical_size = 2 * (vertical_guard_cells + vertical_avg_cells) + 1
@@ -107,4 +91,8 @@ def detect_targets(radar_data, threshold_map):
                 target_map[row, col] = 0
     
     return target_map
+#-----------------------------------------------------------------------------------------
+#----------------------------IQ Data Indices ---------------------------------------------#
+def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
+    return (time_indices * time_step * sampling_rate).astype(int)
 #-----------------------------------------------------------------------------------------

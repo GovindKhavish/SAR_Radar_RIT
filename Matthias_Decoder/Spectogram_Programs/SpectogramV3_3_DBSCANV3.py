@@ -10,6 +10,7 @@ import logging
 import math
 import cmath
 import struct
+import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import matplotlib.gridspec as gridspec
@@ -38,8 +39,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 inputfile = filepath + filename
 
@@ -59,89 +60,10 @@ while selection['Signal Type'].unique()[0] != 0:
 headline = f'Sentinel-1 (burst {selected_burst}): '
 
 radar_data = l0file.get_burst_data(selected_burst)
-#---------------------------- CFAR Function -----------------------------#
-def create_2d_mask(vertical_guard_cells, vertical_avg_cells, horizontal_guard_cells, horizontal_avg_cells):
-    vertical_size = 2 * (vertical_guard_cells + vertical_avg_cells) + 1
-    horizontal_size = 2 * (horizontal_guard_cells + horizontal_avg_cells) + 1
-    
-    mask = np.zeros((vertical_size, horizontal_size))
-    
-    center_row = vertical_guard_cells + vertical_avg_cells
-    center_col = horizontal_guard_cells + horizontal_avg_cells
-
-    total_avg_cells = (vertical_size*horizontal_size) - ((2*vertical_guard_cells+1)* (horizontal_guard_cells*2 +1))
-    
-    mask[:center_row - vertical_guard_cells, :] = 1/(total_avg_cells)
-    mask[center_row + vertical_guard_cells + 1:, :] = 1/(total_avg_cells)
-    mask[:, :center_col - horizontal_guard_cells] = 1/(total_avg_cells)
-    mask[:, center_col + horizontal_guard_cells + 1:] = 1/(total_avg_cells)
-    
-    mask[center_row - vertical_guard_cells:center_row + vertical_guard_cells + 1, 
-         center_col - horizontal_guard_cells:center_col + horizontal_guard_cells + 1] = 0
-    
-    return mask
-
-def get_total_average_cells(vertical_guard_cells, vertical_avg_cells, horizontal_guard_cells, horizontal_avg_cells):
-    vertical_size = 2 * (vertical_guard_cells + vertical_avg_cells) + 1
-    horizontal_size = 2 * (horizontal_guard_cells + horizontal_avg_cells) + 1
-    total_avg_cells = (vertical_size*horizontal_size) - ((2*vertical_guard_cells+1)* (horizontal_guard_cells*2 +1))
-    #print(total_avg_cells)
-    return total_avg_cells
-
-### Padding ###
-
-def create_2d_padded_mask(radar_data, cfar_mask):
-    
-    radar_rows, radar_cols = radar_data.shape
-    mask_rows, mask_cols = cfar_mask.shape
-
-    padded_mask = np.zeros((radar_rows, radar_cols))
-    padded_mask[:mask_rows, :mask_cols] = cfar_mask
-
-    return padded_mask
-
-def set_alpha(total_avg_cells,alarm_rate):
-    alpha = total_avg_cells*(alarm_rate**(-1/total_avg_cells)-1)
-    return alpha
-
-def cfar_method(radar_data, cfar_mask, threshold_multiplier):
-    rows, cols = radar_data.shape
-    threshold_map = np.zeros_like(radar_data)
-
-    padded_mask = create_2d_padded_mask(radar_data,cfar_mask)
-
-    fft_data = np.fft.fft2(radar_data)
-    fft_mask = np.fft.fft2(padded_mask)
-    
-    fft_threshold = fft_data * fft_mask
-    
-    threshold_map = np.abs(np.fft.ifft2(np.fft.fftshift(fft_threshold)))
-    threshold_map *= threshold_multiplier
-    
-    return threshold_map
-
-
-### Detection ###
-def detect_targets(radar_data, threshold_map):
-    target_map = np.zeros_like(radar_data)
-    len_row, len_col = radar_data.shape 
-
-    hits = 0
-    for row in range(len_row):
-        for col in range(len_col):
-            if np.abs(radar_data[row, col]) > threshold_map[row, col]:
-                target_map[row, col] = 1
-                hits += 1
-            else:
-                target_map[row, col] = 0
-    
-    print(f"Number of detections: {hits}")
-    return target_map
-
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 36
+idx_n = 1429
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -149,7 +71,7 @@ radar_section = radar_data[idx_n, :]
 alarm_rate = 1e-9
 num_guard_cells = 10
 num_reference_cells = 5 
-threshold_factor = set_alpha(2*num_reference_cells,alarm_rate)
+threshold_factor = Spectogram_FunctionsV3.set_alpha(2*num_reference_cells,alarm_rate)
 
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
@@ -197,7 +119,7 @@ hori_guard = 25
 hori_avg = 30
 alarm_rate = 1e-9
 
-cfar_mask = create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
+cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
 
 # # Plot the CFAR Mask
 # plt.figure(figsize=(2, 10))
@@ -207,7 +129,7 @@ cfar_mask = create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
 # plt.ylabel('Slow Time')
 # plt.colorbar(label='Filter Amplitude')
 
-padded_mask = create_2d_padded_mask(aa,cfar_mask)
+padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
 
 # Plot the Padded Mask
 # plt.figure(figsize=(2, 10))
@@ -217,11 +139,11 @@ padded_mask = create_2d_padded_mask(aa,cfar_mask)
 # plt.ylabel('Slow Time')
 # plt.colorbar(label='Filter Amplitude')
 
-alpha = set_alpha(get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
+alpha = Spectogram_FunctionsV3.set_alpha(Spectogram_FunctionsV3.get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
 print("Threshold Value: ",alpha)
 
 # thres_map = cfar_method(aa,cfar_mask,alpha)
-thres_map = cfar_method(aa,padded_mask,alpha)
+thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
 
 # Plot the Threshold Map
 plt.figure(figsize=(10, 5))
@@ -233,7 +155,7 @@ plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
 # Detect the targets using the spectrogram data
-aa_db_filtered = detect_targets(aa, thres_map)
+aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
 # Plot the Target Map
 plt.figure(figsize=(10, 5))
@@ -245,9 +167,6 @@ plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
 # ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
-def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
-    return (time_indices * time_step * sampling_rate).astype(int)
-
 thresholded_aa_flat = aa_db_filtered .flatten()
 
 # 2D (time, frequency)
@@ -346,50 +265,50 @@ for cluster_id, params in cluster_params.items():
 # cluster_params_array = np.array([[cluster_id, params['bandwidth'], params['center_frequency'], params['chirp_rate'], params['start_time_index'], params['end_time_index']]
 #                                  for cluster_id, params in cluster_params.items()])
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 NFFT = 256
 noverlap = 200
 sampling_rate = fs
 time_step = (NFFT - noverlap) / sampling_rate  # seconds
 
-# Convert to I/Q data
-def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
-    return (time_indices * time_step * sampling_rate).astype(int)
-
+# Map cluster indices to I/Q start and end indices
 mapped_cluster_indices = {}
 for cluster_id, params in cluster_params.items():
     start_time_idx = params['start_time_index']
     end_time_idx = params['end_time_index']
-    iq_start_idx = spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-    iq_end_idx = spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
+    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
     mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
 
-isolated_radar_data = np.zeros_like(radar_section, dtype=complex)
+# Initialize a dictionary to store isolated radar data for each cluster
+isolated_pulses_data = {}
 
-for idx in range(len(radar_section)):
-    for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
-        if iq_start_idx <= idx <= iq_end_idx:
-            isolated_radar_data[idx] = radar_section[idx]
-            break 
+# Populate the isolated I/Q data for each cluster
+for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
+    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)  # Zero-initialized array
+    for idx in range(len(radar_section)):
+        if iq_start_idx <= idx <= iq_end_idx:  # Check if index is within the cluster range
+            isolated_pulses_data[cluster_id][idx] = radar_section[idx]
 
-plt.figure(figsize=(12, 6))
+# Visualize the isolated data for each cluster
+fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
 
-plt.subplot(2, 1, 1)
-plt.plot(np.real(radar_section), label='Real Part', alpha=0.7, linestyle='-')
-plt.plot(np.imag(radar_section), label='Imaginary Part', alpha=0.7, linestyle='-')
-plt.title('Full Radar I/Q Data')
-plt.xlabel('Sample Index')
-plt.ylabel('Amplitude')
-plt.legend()
-plt.grid(True)
+# If there's only one cluster, make sure axes is not a list
+if len(isolated_pulses_data) == 1:
+    axes = [axes]
 
-plt.subplot(2, 1, 2)
-plt.plot(np.real(isolated_radar_data), label='Real Part', alpha=0.7, linestyle='-')
-plt.plot(np.imag(isolated_radar_data), label='Imaginary Part', alpha=0.7, linestyle='-')
-plt.title('Isolated Radar I/Q Data (Zero Outside Clusters)')
-plt.xlabel('Sample Index')
-plt.ylabel('Amplitude')
-plt.legend()
-plt.grid(True)
+# Plot each cluster's isolated I/Q data
+for idx, (cluster_id, iq_data) in enumerate(isolated_pulses_data.items()):
+    # Plot the I/Q data (real and imaginary parts)
+    axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
+    axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
+    
+    axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
+    axes[idx].set_xlabel("Index")
+    axes[idx].set_ylabel("Amplitude")
+    axes[idx].legend()
 
 plt.tight_layout()
 plt.show()

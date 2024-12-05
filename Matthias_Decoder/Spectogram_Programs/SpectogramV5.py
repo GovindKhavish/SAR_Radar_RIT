@@ -59,16 +59,14 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 radar_data = l0file.get_burst_data(selected_burst)
 
 #------------------------ Apply CFAR filtering --------------------------------
-def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
-    return (time_indices * time_step * sampling_rate).astype(int)
-
 global_pulse_number = 1
 
-start_idx = 0 
-end_idx = 100  
+start_idx = 1428
+end_idx = 1429
 fs = 46918402.800000004  
 
 global_cluster_params = {}
+global_isolated_pulses_data = {}
 
 for idx_n in range(start_idx, end_idx + 1):
     radar_section = radar_data[idx_n, :]
@@ -155,7 +153,6 @@ for idx_n in range(start_idx, end_idx + 1):
                 time_span = np.max(time_indices) - np.min(time_indices)
                 chirp_rate = bandwidth / time_span if time_span != 0 else 0
 
-                
                 start_time = np.min(time_indices) / fs  
                 end_time = np.max(time_indices) / fs  
                 adjusted_start_time = start_time + slow_time_offset
@@ -188,7 +185,7 @@ for idx_n in range(start_idx, end_idx + 1):
 
         time_step = (NFFT - noverlap) / sampling_rate
 
-        # Dictionary to store isolated I/Q data for each pulse
+        # Dictionary to store isolated I/Q data for each pulse (global storage)
         isolated_pulses_data = {}
 
         cluster_time_indices = {}
@@ -196,8 +193,8 @@ for idx_n in range(start_idx, end_idx + 1):
             for params in params_list:
                 start_time_idx = params['start_time_index']
                 end_time_idx = params['end_time_index']
-                iq_start_idx = spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-                iq_end_idx = spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+                iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
+                iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
                 
                 pulse_number = params['pulse_number']
                 if pulse_number not in cluster_time_indices:
@@ -218,11 +215,20 @@ for idx_n in range(start_idx, end_idx + 1):
                         isolated_pulses_data[pulse_number][idx] = radar_section[idx]
                         break  # Stop checking once matched
 
-        # Convert lists to numpy arrays
+        # Convert lists to numpy arrays for each pulse
         for pulse_number in isolated_pulses_data:
             isolated_pulses_data[pulse_number] = np.array(isolated_pulses_data[pulse_number], dtype=complex)
 
-        # The `isolated_pulses_data` dictionary now contains isolated I/Q data for each pulse.
+        # Update the global variable with isolated data for this rangeline (don't overwrite)
+        for pulse_number, data in isolated_pulses_data.items():
+            if pulse_number not in global_isolated_pulses_data:
+                global_isolated_pulses_data[pulse_number] = []
+            global_isolated_pulses_data[pulse_number].append(data)  # Append data from this rangeline
+
+
+
+
+
 
 
 
