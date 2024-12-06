@@ -1,54 +1,44 @@
 #=========================================================================================
-# _common_imports_v3_py.py ]
+# main_pulse_analysis.py
 #
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals
 
 import numpy as np
-import pandas as pd
-import sqlite3
-import numpy as np
+import os
 import polars as pl
-import Database_Functions
-from sklearn.cluster import DBSCAN
+import Database_Functions  # Custom module for database handling and plotting
+
 #----------------------------------------------------------------------------------------#
-# Path to the SQLite database
-db_path = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases/pulse_characteristics_Mipur.db"
+# Path to the database
+db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+db_name = "pulse_characteristics_Mipur.db"
+db_path = f"{db_folder}/{db_name}"
 
-# Connect to the database
-conn = sqlite3.connect(db_path)
-#----------------------------------------------------------------------------------------#
-# Retrieve all pulse characteristics into a Pandas DataFrame
-pulse_data_df = pd.read_sql_query(
-    """
-    SELECT * FROM pulse_data
-    """,
-    conn
-)
+# Load pulse data
+pulse_data = Database_Functions.load_pulse_data_from_db(db_path)
 
-# Optionally convert to a Polars DataFrame
-pulse_data_pl = pl.from_pandas(pulse_data_df)
+# Ensure proper data types
+pulse_data["pulse_number"] = pulse_data["pulse_number"].astype(int)
 
-print("All Pulse Characteristics:")
-print(pulse_data_pl)
+# Plot the pulse characteristics
+Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
+Database_Functions.plot_duration_vs_pulse_number(pulse_data)
+Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
 
-# Fetch specific pulse details
-pulse_number = 1428  # Example pulse number
-pulse_characteristics = pd.read_sql_query(
-    f"""
-    SELECT * FROM pulse_data WHERE pulse_number = {pulse_number}
-    """,
-    conn
-)
 
-print(f"Characteristics for Pulse {pulse_number}:")
-print(pulse_characteristics)
+# If I/Q data visualization or specific pulse retrieval is needed
+pulse_number = 3 
+iq_data = Database_Functions.retrieve_iq_data_from_db(pulse_number, db_path)
+Database_Functions.plot_iq_data(iq_data, pulse_number)
+# iq_data = Database_Functions.get_iq_data(db_path, pulse_number)
 
-# Fetch I/Q data for a specific pulse
-iq_data = Database_Functions.get_iq_data(pulse_number, conn)
-if iq_data is not None:
-    print(f"I/Q data for pulse {pulse_number}:")
-    print(iq_data)
+# if iq_data is not None:
+#     print(f"I/Q data for pulse {pulse_number}:")
+#     print(iq_data)
+# else:
+#     print(f"No I/Q data found for pulse {pulse_number}.")
 
-# Close the connection
-conn.close()
+# if iq_data is not None:
+#     Database_Functions.plot_iq_time_series(iq_data, title=f"I/Q Time Series for Pulse {pulse_number}", sample_rate=1)
+
