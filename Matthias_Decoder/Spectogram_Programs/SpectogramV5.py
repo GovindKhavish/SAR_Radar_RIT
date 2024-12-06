@@ -219,17 +219,102 @@ for idx_n in range(start_idx, end_idx + 1):
         for pulse_number in isolated_pulses_data:
             isolated_pulses_data[pulse_number] = np.array(isolated_pulses_data[pulse_number], dtype=complex)
 
-        # Update the global variable with isolated data for this rangeline (don't overwrite)
+        # Update the global variable with isolated data for this rangeline
         for pulse_number, data in isolated_pulses_data.items():
             if pulse_number not in global_isolated_pulses_data:
                 global_isolated_pulses_data[pulse_number] = []
             global_isolated_pulses_data[pulse_number].append(data)  # Append data from this rangeline
 
 
+db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+db_name = "pulse_characteristics_Mipur.db"
+db_path = os.path.join(db_folder, db_name)
 
+if not os.path.exists(db_folder):
+    os.makedirs(db_folder)
+    print(f"Folder '{db_folder}' created.")
 
+# Database connection
+conn = sqlite3.connect(db_path)
 
+# Prepare the pulse characteristics data for storage
+pulse_details = {
+    "pulse_number": [],
+    "bandwidth": [],
+    "center_frequency": [],
+    "chirp_rate": [],
+    "start_time_index": [],
+    "end_time_index": [],
+    "adjusted_start_time": [],
+    "adjusted_end_time": [],
+    "pulse_duration": []
+}
 
+for unique_key, params_list in global_cluster_params.items():
+    for params in params_list:
+        pulse_details["pulse_number"].append(params["pulse_number"])
+        pulse_details["bandwidth"].append(params["bandwidth"])
+        pulse_details["center_frequency"].append(params["center_frequency"])
+        pulse_details["chirp_rate"].append(params["chirp_rate"])
+        pulse_details["start_time_index"].append(params["start_time_index"])
+        pulse_details["end_time_index"].append(params["end_time_index"])
+        pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
+        pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
+        pulse_details["pulse_duration"].append(params["pulse_duration"])
 
+pulse_data_df = pl.DataFrame(pulse_details)
 
+# Store the pulse data and IQ data
+with conn:
+    cursor = conn.cursor()
+    
+    # Create the `pulse_data` table for pulse characteristics
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS pulse_data (
+        pulse_number INTEGER PRIMARY KEY,
+        bandwidth REAL,
+        center_frequency REAL,
+        chirp_rate REAL,
+        start_time_index INTEGER,
+        end_time_index INTEGER,
+        adjusted_start_time REAL,
+        adjusted_end_time REAL,
+        pulse_duration REAL
+    )
+    """)
 
+    # Create the `iq_data` table for storing I/Q data
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS iq_data (
+        pulse_number INTEGER,
+        iq_data BLOB,
+        FOREIGN KEY (pulse_number) REFERENCES pulse_data (pulse_number)
+    )
+    """)
+
+    # Insert pulse characteristics into the `pulse_data` table
+    conn.executemany(
+        """INSERT OR REPLACE INTO pulse_data (
+            pulse_number, bandwidth, center_frequency, chirp_rate,
+            start_time_index, end_time_index,
+            adjusted_start_time, adjusted_end_time, pulse_duration
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        pulse_data_df.to_numpy().tolist()
+    )
+    
+    # Insert I/Q data into the `iq_data` table
+    for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
+        # Concatenate all segments for this pulse into a single array
+        iq_data = np.concatenate(iq_data_segments)
+        
+        # Serialize the I/Q data to a binary format
+        iq_data_blob = iq_data.tobytes()
+        
+        # Store the I/Q data as a BLOB
+        cursor.execute(
+            """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
+            (pulse_number, iq_data_blob)
+        )
+
+conn.close()
+print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
