@@ -61,8 +61,8 @@ radar_data = l0file.get_burst_data(selected_burst)
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 1428
-end_idx = 1429
+start_idx = 0
+end_idx = 1500
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -91,12 +91,6 @@ for idx_n in range(start_idx, end_idx + 1):
     threshold,aa = Spectogram_FunctionsV3.adaptive_threshold(aa)
 
     #------------------------ Apply CFAR filtering --------------------------------
-    # Process the data using the CFAR function
-    alarm_rate = 1e-9
-    num_guard_cells = 10
-    num_reference_cells = 5 
-    threshold_factor = Spectogram_FunctionsV3.set_alpha(2*num_reference_cells,alarm_rate)
-
     # Radar data dimensions
     #radar_data = radar_data[0:200,10000:15000]
     time_size = aa.shape[1] # Freq
@@ -104,11 +98,12 @@ for idx_n in range(start_idx, end_idx + 1):
 
     # Create 2D Mask
     #vert_guard,vert_avg,hori_Guard,hori_avg
-    vert_guard = 15
+    vert_guard = 12
     vert_avg = 30
-    hori_guard = 25
+    hori_guard = 10
     hori_avg = 30
     alarm_rate = 1e-9
+
 
     cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
 
@@ -131,7 +126,7 @@ for idx_n in range(start_idx, end_idx + 1):
         print(f"No targets detected for rangeline {idx_n}.")
         continue  
     else: 
-        dbscan = DBSCAN(eps=6, min_samples=20)
+        dbscan = DBSCAN(eps=6, min_samples=30)
         clusters = dbscan.fit_predict(time_freq_data)
 
         num_clusters = len(np.unique(clusters[clusters != -1]))

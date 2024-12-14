@@ -63,16 +63,12 @@ radar_data = l0file.get_burst_data(selected_burst)
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1429
+idx_n = 300
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
 # Process the data using the CFAR function
 alarm_rate = 1e-9
-num_guard_cells = 10
-num_reference_cells = 5 
-threshold_factor = Spectogram_FunctionsV3.set_alpha(2*num_reference_cells,alarm_rate)
-
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
@@ -105,6 +101,7 @@ ax.set_xlabel('Time [us]', fontweight='bold')
 ax.set_ylabel('Freq [MHz]', fontweight='bold')
 ax.set_title(f'Filtered Spectrogram (Threshold: {round(10*np.log10(threshold),2)} dB)', fontweight='bold')
 plt.tight_layout()
+plt.show()
 
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
@@ -113,9 +110,9 @@ freq_size = aa.shape[0] # Time
 
 # Create 2D Mask
 #vert_guard,vert_avg,hori_Guard,hori_avg
-vert_guard = 15
+vert_guard = 12
 vert_avg = 30
-hori_guard = 25
+hori_guard = 10
 hori_avg = 30
 alarm_rate = 1e-9
 
@@ -176,7 +173,7 @@ time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero p
 frequency_indices = bb[time_freq_data[:, 0]]
 
 # DBSCAN
-dbscan = DBSCAN(eps=6, min_samples=20)
+dbscan = DBSCAN(eps=6, min_samples=30)
 clusters = dbscan.fit_predict(time_freq_data)
 
 # Plot threshold
@@ -184,8 +181,6 @@ fig_thresh = plt.figure(13, figsize=(6, 6), clear=True)
 ax_thresh = fig_thresh.add_subplot(111)
 aa_db_filtered = 10 * np.log10(aa_db_filtered  + 1e-10) 
 dd = ax_thresh.imshow(aa_db_filtered, aspect='auto', origin='lower', cmap='Greys')
-
-
 
 for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise here
     cluster_points = time_freq_data[clusters == cluster]

@@ -143,7 +143,7 @@ def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
 global_pulse_number = 1
 
 start_idx = 0 
-end_idx = 100  
+end_idx = 1500 
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -193,9 +193,9 @@ for idx_n in range(start_idx, end_idx + 1):
 
     # Create 2D Mask
     #vert_guard,vert_avg,hori_Guard,hori_avg
-    vert_guard = 15
+    vert_guard = 12
     vert_avg = 30
-    hori_guard = 25
+    hori_guard = 10
     hori_avg = 30
     alarm_rate = 1e-9
 
@@ -240,7 +240,7 @@ for idx_n in range(start_idx, end_idx + 1):
         print(f"No targets detected for rangeline {idx_n}.")
         continue  
     else: 
-        dbscan = DBSCAN(eps=6, min_samples=20)
+        dbscan = DBSCAN(eps=6, min_samples=30)
         clusters = dbscan.fit_predict(time_freq_data)
 
         num_clusters = len(np.unique(clusters[clusters != -1]))
@@ -316,9 +316,6 @@ for idx_n in range(start_idx, end_idx + 1):
 # print("Cluster Parameters for All Pulses:")
 # pprint.pprint(global_cluster_params)
 
-
-
-
 pulse_numbers = []
 bandwidths = []
 durations = []
@@ -367,69 +364,69 @@ plt.legend()
 
 plt.show()
 
-db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases" 
-db_name = "pulse_characteristics_Mipur.db"
-db_path = os.path.join(db_folder, db_name)
+# db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases" 
+# db_name = "pulse_characteristics_Mipur.db"
+# db_path = os.path.join(db_folder, db_name)
 
-if not os.path.exists(db_folder):
-    os.makedirs(db_folder)
-    print(f"Folder '{db_folder}' created.")
+# if not os.path.exists(db_folder):
+#     os.makedirs(db_folder)
+#     print(f"Folder '{db_folder}' created.")
 
-# Database connection
-conn = sqlite3.connect(db_path)
+# # Database connection
+# conn = sqlite3.connect(db_path)
 
-# Prepare the data for storage
-pulse_details = {
-    "pulse_number": [],
-    "bandwidth": [],
-    "center_frequency": [],
-    "chirp_rate": [],
-    "start_time_index": [],
-    "end_time_index": [],
-    "adjusted_start_time": [],
-    "adjusted_end_time": [],
-    "pulse_duration": []
-}
+# # Prepare the data for storage
+# pulse_details = {
+#     "pulse_number": [],
+#     "bandwidth": [],
+#     "center_frequency": [],
+#     "chirp_rate": [],
+#     "start_time_index": [],
+#     "end_time_index": [],
+#     "adjusted_start_time": [],
+#     "adjusted_end_time": [],
+#     "pulse_duration": []
+# }
 
-for unique_key, params_list in global_cluster_params.items():
-    for params in params_list:
-        pulse_details["pulse_number"].append(params["pulse_number"])
-        pulse_details["bandwidth"].append(params["bandwidth"])
-        pulse_details["center_frequency"].append(params["center_frequency"])
-        pulse_details["chirp_rate"].append(params["chirp_rate"])
-        pulse_details["start_time_index"].append(params["start_time_index"])
-        pulse_details["end_time_index"].append(params["end_time_index"])
-        pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
-        pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
-        pulse_details["pulse_duration"].append(params["pulse_duration"])
+# for unique_key, params_list in global_cluster_params.items():
+#     for params in params_list:
+#         pulse_details["pulse_number"].append(params["pulse_number"])
+#         pulse_details["bandwidth"].append(params["bandwidth"])
+#         pulse_details["center_frequency"].append(params["center_frequency"])
+#         pulse_details["chirp_rate"].append(params["chirp_rate"])
+#         pulse_details["start_time_index"].append(params["start_time_index"])
+#         pulse_details["end_time_index"].append(params["end_time_index"])
+#         pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
+#         pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
+#         pulse_details["pulse_duration"].append(params["pulse_duration"])
 
-pulse_data_df = pl.DataFrame(pulse_details)
+# pulse_data_df = pl.DataFrame(pulse_details)
 
-with conn:
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS pulse_data (
-        pulse_number INTEGER PRIMARY KEY,
-        bandwidth REAL,
-        center_frequency REAL,
-        chirp_rate REAL,
-        start_time_index INTEGER,
-        end_time_index INTEGER,
-        adjusted_start_time REAL,
-        adjusted_end_time REAL,
-        pulse_duration REAL
-    )
-    """)
+# with conn:
+#     cursor = conn.cursor()
+#     cursor.execute("""
+#     CREATE TABLE IF NOT EXISTS pulse_data (
+#         pulse_number INTEGER PRIMARY KEY,
+#         bandwidth REAL,
+#         center_frequency REAL,
+#         chirp_rate REAL,
+#         start_time_index INTEGER,
+#         end_time_index INTEGER,
+#         adjusted_start_time REAL,
+#         adjusted_end_time REAL,
+#         pulse_duration REAL
+#     )
+#     """)
 
-    conn.executemany(
-        """INSERT OR REPLACE INTO pulse_data (
-            pulse_number, bandwidth, center_frequency, chirp_rate,
-            start_time_index, end_time_index,
-            adjusted_start_time, adjusted_end_time, pulse_duration
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        pulse_data_df.to_numpy().tolist() 
-    )
+#     conn.executemany(
+#         """INSERT OR REPLACE INTO pulse_data (
+#             pulse_number, bandwidth, center_frequency, chirp_rate,
+#             start_time_index, end_time_index,
+#             adjusted_start_time, adjusted_end_time, pulse_duration
+#         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+#         pulse_data_df.to_numpy().tolist() 
+#     )
 
-conn.close()
-print(f"Detailed pulse data stored in SQLite3 database at {db_path}.")
+# conn.close()
+# print(f"Detailed pulse data stored in SQLite3 database at {db_path}.")
 

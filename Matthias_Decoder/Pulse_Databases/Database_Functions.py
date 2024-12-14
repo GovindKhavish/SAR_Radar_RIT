@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import sqlite3
 import numpy as np
 import polars as pl
+import tkinter as tk
+from tkinter import ttk
 from sklearn.cluster import DBSCAN
 #----------------------------------------------------------------------------------------#
 # --------------------- I/Q Data Retrieval ---------------------
@@ -35,6 +37,64 @@ def load_pulse_data_from_db(db_path):
     pulse_data_df = pd.read_sql(query, conn)
     conn.close()
     return pulse_data_df
+
+
+def display_database_in_window(db_path):
+    # Load database using SQLite3 and Pandas
+    conn = sqlite3.connect(db_path)
+    query = "SELECT * FROM pulse_data"
+    pulse_data_df = pd.read_sql(query, conn)
+    conn.close()
+
+    # Create the main tkinter window
+    root = tk.Tk()
+    root.title("Database Viewer")
+
+    # Add a Treeview widget to display the data
+    frame = ttk.Frame(root)
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    tree = ttk.Treeview(frame, columns=list(pulse_data_df.columns), show='headings')
+
+    # Define column headings
+    for col in pulse_data_df.columns:
+        tree.heading(col, text=col)
+        tree.column(col, anchor=tk.CENTER, width=100)
+
+    # Insert data into the Treeview widget
+    for index, row in pulse_data_df.iterrows():
+        tree.insert("", tk.END, values=list(row))
+
+    tree.pack(fill=tk.BOTH, expand=True)
+
+    # Add a vertical scrollbar
+    scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+    tree.configure(yscroll=scrollbar.set)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # Function to display selected row details
+    def show_selected_row_details():
+        selected_item = tree.focus()  # Get selected item ID
+        if not selected_item:
+            return
+
+        values = tree.item(selected_item, 'values')  # Get the row data
+
+        # Create a new window to display details
+        details_window = tk.Toplevel(root)
+        details_window.title("Row Details")
+
+        # Display row details
+        for i, col in enumerate(pulse_data_df.columns):
+            label = ttk.Label(details_window, text=f"{col}: {values[i]}")
+            label.pack(anchor=tk.W, padx=10, pady=5)
+
+    # Add a button to show row details
+    button = ttk.Button(root, text="Show Selected Row Details", command=show_selected_row_details)
+    button.pack(pady=10)
+
+    # Run the tkinter event loop
+    root.mainloop()
 
 # --------------------- Plotting Functions ---------------------
 def plot_bandwidth_vs_pulse_number(dataframe, title="Bandwidth vs. Pulse Number"):

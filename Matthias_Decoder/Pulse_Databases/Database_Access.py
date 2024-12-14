@@ -21,11 +21,13 @@ pulse_data = Database_Functions.load_pulse_data_from_db(db_path)
 # Ensure proper data types
 pulse_data["pulse_number"] = pulse_data["pulse_number"].astype(int)
 
+# View the database in a window and allow row selection
+Database_Functions.display_database_in_window(db_path)
+
 # Plot the pulse characteristics
 Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
 Database_Functions.plot_duration_vs_pulse_number(pulse_data)
 Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
-
 
 # If I/Q data visualization or specific pulse retrieval is needed
 pulse_number = 3 
