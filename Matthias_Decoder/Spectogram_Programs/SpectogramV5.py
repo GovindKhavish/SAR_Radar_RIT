@@ -61,8 +61,8 @@ radar_data = l0file.get_burst_data(selected_burst)
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 1428
-end_idx = 1429
+start_idx = 1250
+end_idx = 1265
 fs = 46918402.800000004  
 
 global_cluster_params = {}

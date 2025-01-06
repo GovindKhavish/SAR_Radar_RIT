@@ -21,29 +21,17 @@ pulse_data = Database_Functions.load_pulse_data_from_db(db_path)
 # Ensure proper data types
 pulse_data["pulse_number"] = pulse_data["pulse_number"].astype(int)
 
-# Optionally convert to a Polars DataFrame
-pulse_data_pl = pl.from_pandas(pulse_data_df)
+# View the database in a window and allow row selection
+Database_Functions.display_database_in_window(db_path)
 
-print("All Pulse Characteristics:")
-print(pulse_data_pl)
+# Plot the pulse characteristics
+Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
+Database_Functions.plot_duration_vs_pulse_number(pulse_data)
+Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
 
-# Fetch specific pulse details
-pulse_number = 1428  # Example pulse number
-pulse_characteristics = pd.read_sql_query(
-    f"""
-    SELECT * FROM pulse_data WHERE pulse_number = {pulse_number}
-    """,
-    conn
-)
+# If I/Q data visualization or specific pulse retrieval is needed
+pulse_number = 3 
+iq_data = Database_Functions.retrieve_iq_data_from_db(pulse_number, db_path)
+Database_Functions.plot_iq_data(iq_data, pulse_number)
 
-print(f"Characteristics for Pulse {pulse_number}:")
-print(pulse_characteristics)
 
-# Fetch I/Q data for a specific pulse
-iq_data = Database_Functions.get_iq_data(pulse_number, conn)
-if iq_data is not None:
-    print(f"I/Q data for pulse {pulse_number}:")
-    print(iq_data)
-
-# Close the connection
-conn.close()
