@@ -58,11 +58,13 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 
 radar_data = l0file.get_burst_data(selected_burst)
 
+
+
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 1250
-end_idx = 1265
+start_idx = 1251
+end_idx = 1252
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -220,12 +222,6 @@ for idx_n in range(start_idx, end_idx + 1):
                 global_isolated_pulses_data[pulse_number] = []
             global_isolated_pulses_data[pulse_number].append(data)  # Append data from this rangeline
 
-
-import os
-import sqlite3
-import numpy as np
-import polars as pl  # Assuming this is used for DataFrame creation
-
 # ------------------ Database Storage -------------------
 
 db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
@@ -317,14 +313,6 @@ with conn:
             pulse_duration_sec = params["pulse_duration"] * 1e-6  # Convert from µs to seconds
             toa_sec = params["adjusted_start_time"] * 1e-6  # Convert from µs to seconds
 
-            # Debugging: Print values for each pulse before insertion
-            print(f"Inserting Pulse Number: {params['pulse_number']}")
-            print(f"Bandwidth (Hz): {bandwidth_hz}")
-            print(f"Center Frequency (Hz): {center_frequency_hz}")
-            print(f"Adjusted Start Time (sec): {adjusted_start_time_sec}")
-            print(f"Adjusted End Time (sec): {adjusted_end_time_sec}")
-            print(f"Pulse Duration (sec): {pulse_duration_sec}")
-
             # Insert one row at a time to the pulse_data table
             cursor.execute(
                 """INSERT OR REPLACE INTO pulse_data (
@@ -355,19 +343,23 @@ with conn:
     conn.commit()
 
     # -------------------- Insertion of I/Q Data --------------------
-
+    # Assuming the cursor and connection are already initialized
     for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
-        # Concatenate all segments for this pulse into a single array
-        iq_data = np.concatenate(iq_data_segments)
+        if len(iq_data_segments) == 0:
+            print(f"Warning: No I/Q data for pulse number {pulse_number}")
+            continue  # Skip this pulse if no data
 
-        # Serialize the I/Q data to binary format
-        iq_data_blob = iq_data.tobytes()
+        for segment in iq_data_segments:
+            # Serialize the complex I/Q data to binary format (no need for string conversion)
+            iq_data_blob = segment.tobytes()
 
-        # Insert I/Q data as BLOB
-        cursor.execute(
-            """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
-            (pulse_number, iq_data_blob)
-        )
+            # Insert the I/Q data as binary (BLOB) into the database
+            cursor.execute(
+                """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
+                (pulse_number, iq_data_blob)
+            )
+
+
 
 # Close the connection
 conn.close()
@@ -470,3 +462,38 @@ print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_pat
 
 # conn.close()
 # print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
+
+
+# def plot_iq_data(iq_data, pulse_number):
+#     """
+#     Plots the I/Q data for a specific pulse for debugging.
+    
+#     Args:
+#         iq_data (np.ndarray): The I/Q data for the pulse.
+#         pulse_number (int): The pulse number for the plot title.
+#     """
+#     # Ensure there is I/Q data
+#     if iq_data is None or len(iq_data) == 0:
+#         print(f"No I/Q data for Pulse {pulse_number}")
+#         return
+    
+#     # Time axis (based on the number of samples)
+#     time = np.arange(len(iq_data))
+    
+#     # Plotting the I/Q data (Real and Imaginary parts)
+#     plt.figure(figsize=(12, 6))
+#     plt.plot(time, np.real(iq_data), label=f"Pulse {pulse_number} - Real (I)", color='blue')
+#     plt.plot(time, np.imag(iq_data), label=f"Pulse {pulse_number} - Imaginary (Q)", color='red')
+    
+#     plt.title(f"Pulse {pulse_number} - I/Q Data")
+#     plt.xlabel("Time (samples)")
+#     plt.ylabel("Amplitude")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+# # Example usage for debugging
+# for pulse_number, data in isolated_pulses_data.items():
+#     print(f"Debugging Pulse {pulse_number}")
+#     plot_iq_data(data, pulse_number)

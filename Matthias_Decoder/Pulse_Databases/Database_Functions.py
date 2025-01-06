@@ -164,16 +164,18 @@ def retrieve_iq_data_from_db(pulse_number, db_path):
     
     return iq_data
 
+
 def plot_iq_data(iq_data, pulse_number):
     """
     Plots the I/Q data for a specific pulse.
     
     Args:
-        iq_data (np.ndarray): The I/Q data for the pulse.
+        iq_data (np.ndarray): The deserialized I/Q data for the pulse (complex array).
         pulse_number (int): The pulse number for the plot title.
     """
     # Ensure there is I/Q data
     if iq_data is None:
+        print(f"No I/Q data found for pulse {pulse_number}.")
         return
     
     # Time axis (based on the number of samples)
@@ -183,13 +185,16 @@ def plot_iq_data(iq_data, pulse_number):
     plt.figure(figsize=(12, 6))
     plt.plot(time, np.real(iq_data), label=f"Pulse {pulse_number} - Real (I)", color='blue')
     plt.plot(time, np.imag(iq_data), label=f"Pulse {pulse_number} - Imaginary (Q)", color='red')
-    
+
+    # Title and labels
     plt.title(f"Pulse {pulse_number} - I/Q Data")
     plt.xlabel("Time (samples)")
     plt.ylabel("Amplitude")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
+    
+    # Show the plot
     plt.show()
 
 
