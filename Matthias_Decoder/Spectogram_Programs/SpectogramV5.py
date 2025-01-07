@@ -58,8 +58,6 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 
 radar_data = l0file.get_burst_data(selected_burst)
 
-
-
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
