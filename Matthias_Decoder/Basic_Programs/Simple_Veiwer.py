@@ -23,8 +23,8 @@ import sys
 from pathlib import Path, PurePath
 #-----------------------------------------------------------------------------------------
 # Define the subdirectory path
-_simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
-
+# _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
+_simraddir = Path(r'/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Basic_Programs/sentinel1decoder')
 # Check if the subdirectory exists
 if _simraddir.exists():
     sys.path.insert(0, str(_simraddir.resolve()))

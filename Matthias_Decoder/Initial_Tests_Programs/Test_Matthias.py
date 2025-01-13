@@ -32,7 +32,8 @@ import sys
 from pathlib import Path, PurePath;
 ##########################################################################################
 # Define the subdirectory path
-_simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
+# _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
+_simraddir = Path(r'/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/sentinel1decoder')
 
 # Check if the subdirectory exists
 if _simraddir.exists():
@@ -78,8 +79,12 @@ import sentinel1decoder;
 #filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
 
 # Mipur VH
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+# filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+
+# Guam VV
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Guam_USA/2021_09_06/S1B_IW_RAW__0SDV_20210906T200756_20210906T200822_028582_036935_3C18.SAFE"
+filename = '/s1b-iw-raw-s-vv-20210906t200756-20210906t200822-028582-036935.dat'
 
 inputfile = filepath+filename
 
@@ -109,7 +114,7 @@ aiming to produce an image from just a subset of this data.
 sent1_meta  = l0file.packet_metadata
 
 bust_info   = l0file.burst_info
-print(bust_info)
+#print(bust_info)
 
 #bust_info.to_csv('NorthernSea(Ireland)_VH_Burst_Index.csv', index=False)
 
@@ -125,7 +130,7 @@ sent1_ephe  = l0file.ephemeris
 # be processing. We want to exclude all packets that don't contain SAR instrument returns,
 # and then pick a small set of these to operate on.
 
-selected_burst  = 7;
+selected_burst  = 1;
 
 print("Into selection mode")
 print("Selected burst %f",selected_burst)

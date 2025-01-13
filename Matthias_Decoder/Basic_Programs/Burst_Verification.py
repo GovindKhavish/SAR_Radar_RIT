@@ -69,7 +69,7 @@ data = {
         },
         "VV": {
             "filepath": r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Guam_USA/2021_09_06/S1B_IW_RAW__0SDV_20210906T200756_20210906T200822_028582_036935_3C18.SAFE",
-            "filename": '/ss1b-iw-raw-s-vv-20210906t200756-20210906t200822-028582-036935.dat',
+            "filename": '/s1b-iw-raw-s-vv-20210906t200756-20210906t200822-028582-036935.dat',
         },
     },
     "Nazareth": {
