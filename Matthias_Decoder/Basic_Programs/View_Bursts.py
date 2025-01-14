@@ -1,26 +1,18 @@
-from __future__ import division, print_function, unicode_literals
+#=========================================================================================
+# _common_imports_v3_py.py ]
+#
+#=========================================================================================
+from __future__ import division, print_function, unicode_literals # v3line15
 
-import pandas as pd
-import os
-import sqlite3
 import numpy as np
-import logging
-import math
-import cmath
-import struct
-import polars as pl
 import matplotlib.pyplot as plt
-from matplotlib import colors
-from scipy.signal import spectrogram
-from scipy.ndimage import uniform_filter
-from sklearn.cluster import DBSCAN
+#-----------------------------------------------------------------------------------------
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path
+#-----------------------------------------------------------------------------------------
 
-# Define the subdirectory path
 _simraddir = Path(r'/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Basic_Programs/sentinel1decoder')
 
-# Check if the subdirectory exists
 if _simraddir.exists():
     sys.path.insert(0, str(_simraddir.resolve()))
     print("Using the right Sentinel Library")
@@ -30,7 +22,7 @@ else:
 
 import sentinel1decoder
 
-# Data structure for file paths and filenames
+
 data = {
     "Mipur": {
         "VH": {
@@ -80,7 +72,6 @@ data = {
     },
 }
 
-# User selection for location and polarization
 print("Select a location: Mipur, Damascus, Rostov, Guam, Nazareth")
 location = input("Enter location: ").strip()
 print("Select polarization: VH or VV")
@@ -96,25 +87,23 @@ except KeyError:
 
 inputfile = filepath + filename
 
-# Sentinel-1 decoding
 l0file = sentinel1decoder.Level0File(inputfile)
 
 # # Identify valid bursts with "Signal Type == 0"
 # echo_bursts = l0file.burst_info[l0file.burst_info['Signal Type'] == 0]
 # valid_burst_numbers = echo_bursts['Burst'].tolist()
-# Assuming total_bursts gives the number of bursts in the file
 
-total_bursts = len(l0file.burst_info)  # Or some equivalent method to get total bursts
+total_bursts = len(l0file.burst_info) 
 valid_burst_numbers = []
 
-for burst_number in range(57, total_bursts + 1):
+for burst_number in range(63, total_bursts + 1):
     metadata = l0file.get_burst_metadata(burst_number)
-    if metadata['Signal Type'].unique()[0] == 0:  # Check if it's a valid echo signal
+    if metadata['Signal Type'].unique()[0] == 0:
         valid_burst_numbers.append(burst_number)
 
 print(f"Valid burst numbers: {valid_burst_numbers}")
 
-# Plotting each valid burst
+
 for burst_num in valid_burst_numbers:
     radar_data = l0file.get_burst_data(burst_num)
 
@@ -126,6 +115,5 @@ for burst_num in valid_burst_numbers:
     plt.title(f'Burst {burst_num} Data')
     plt.show()
 
-    # Cleanup resources after showing the graph
-    plt.clf()  # Clear the current figure
-    plt.close()  # Close the figure to free up memory
+    plt.clf() 
+    plt.close()

@@ -245,8 +245,3 @@ plt.grid(True)
 plt.legend()
 
 plt.show()
-
-
-
-
-

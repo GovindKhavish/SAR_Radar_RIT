@@ -4,25 +4,13 @@
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals # v3line15
 
-import pandas as pd
-import os
-import sqlite3
 import numpy as np
-import logging
-import math
-import cmath
-import struct
-import polars as pl
 import matplotlib.pyplot as plt
-from matplotlib import colors
-from scipy.signal import spectrogram
-from scipy.ndimage import uniform_filter
-from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path
 #-----------------------------------------------------------------------------------------
-# Define the subdirectory path
+
 # _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
 _simraddir = Path(r'/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Basic_Programs/sentinel1decoder')
 # Check if the subdirectory exists
@@ -34,7 +22,6 @@ else:
 
 import sentinel1decoder
 
-# Data structure for file paths and filenames
 data = {
     "Mipur": {
         "VH": {
@@ -84,7 +71,6 @@ data = {
     },
 }
 
-# User selection for location and polarization
 print("Select a location: Mipur, Damascus, Rostov, Guam, Nazareth")
 location = input("Enter location: ").strip()
 print("Select polarization: VH or VV")
@@ -100,7 +86,6 @@ except KeyError:
 
 inputfile = filepath + filename
 
-# Sentinel-1 decoding and metadata extraction
 l0file = sentinel1decoder.Level0File(inputfile)
 
 sent1_meta = l0file.packet_metadata
@@ -118,7 +103,6 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 
 radar_data = l0file.get_burst_data(selected_burst)
 
-# Plotting the result
 plt.figure(figsize=(14, 6))
 plt.imshow(10 * np.log10(abs(radar_data[:, :])), aspect='auto', interpolation='none', origin='lower')
 plt.colorbar(label='Amplitude')

@@ -220,8 +220,9 @@ for idx_n in range(start_idx, end_idx + 1):
                 global_isolated_pulses_data[pulse_number] = []
             global_isolated_pulses_data[pulse_number].append(data)  # Append data from this rangeline
 
-# ------------------ Database Storage -------------------
 
+
+# ------------------ Database Storage -------------------
 db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
 db_name = "pulse_characteristics_Mipur.db"
 db_path = os.path.join(db_folder, db_name)
@@ -262,7 +263,6 @@ pulse_details = {
 
 with conn:
     cursor = conn.cursor()
-    
     # Drop the table if it exists, to ensure the schema is correct
     cursor.execute("DROP TABLE IF EXISTS pulse_data")
     cursor.execute("""
@@ -298,9 +298,7 @@ with conn:
         FOREIGN KEY (pulse_number) REFERENCES pulse_data (pulse_number)
     )
     """)
-
     # -------------------- Insertion of Pulse Data --------------------
-
     for unique_key, params_list in global_cluster_params.items():
         for params in params_list:
             # Standard unit conversion

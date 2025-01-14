@@ -4,23 +4,11 @@
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals # v3line15
 
-import pandas as pd
-import os
-import sqlite3
-import numpy as np
-import logging
-import math
-import cmath
-import struct
-import polars as pl
 import matplotlib.pyplot as plt
 from matplotlib import colors
-from scipy.signal import spectrogram
-from scipy.ndimage import uniform_filter
-from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path
 #-----------------------------------------------------------------------------------------
 # Define the subdirectory path
 _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
@@ -34,7 +22,6 @@ else:
 
 import sentinel1decoder
 
-# Data structure for file paths and filenames
 data = {
     "Mipur": {
         "VH": {
@@ -84,7 +71,6 @@ data = {
     },
 }
 
-# User selection for location and polarization
 print("Select a location: Mipur, Damascus, Rostov, Guam, Nazareth")
 location = input("Enter location: ").strip()
 print("Select polarization: VH or VV")
