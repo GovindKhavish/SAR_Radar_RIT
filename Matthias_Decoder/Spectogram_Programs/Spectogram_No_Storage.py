@@ -9,6 +9,7 @@ import polars as pl
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from scipy.signal import spectrogram
+from scipy.ndimage import binary_dilation
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
@@ -27,14 +28,14 @@ import sentinel1decoder
 
 # Mipur VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-# filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
 
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Lebanon/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
-filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Lebanon/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
 inputfile = filepath + filename
 
@@ -120,64 +121,75 @@ for idx_n in range(start_idx, end_idx + 1):
 
     aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
-    # ------------------ DBSCAN Clustering -------------------
-    thresholded_aa_flat = aa_db_filtered.flatten()
+    # ------------------- Shape Detection ---------------------
+    aa_filtered_clean = aa_db_filtered
 
-    time_freq_data = np.column_stack(np.where(aa_db_filtered > 0)) 
-    frequency_indices = bb[time_freq_data[:, 0]]
+    gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
+    gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
+    gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-    # DBSCAN
+    forward_slash_mask = (gradient_x > 0.1) & (gradient_y < 0.1) & (gradient_magnitude > np.percentile(gradient_magnitude, 90))
+
+    # Use binary dilation for thicker lines
+    dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3))) 
+
+    # Apply the mask to the spectrogram to extract candidates
+    chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
+
+    # ------------------ Detect Chirp Candidates ------------------
+    time_freq_data = np.column_stack(np.where(chirp_candidates > 0))
+
     if time_freq_data.shape[0] == 0:
-        #print(f"No targets detected for rangeline {idx_n}.")
-        continue  
-    else: 
-        dbscan = DBSCAN(eps=6, min_samples=30)
-        clusters = dbscan.fit_predict(time_freq_data)
+        continue  # No data points, skip this range line
 
-        num_clusters = len(np.unique(clusters[clusters != -1]))
-        #print(f"Number of clusters for rangeline {idx_n}: {num_clusters}")
+    # Apply DBSCAN for clustering
+    dbscan = DBSCAN(eps=20, min_samples=5)
+    clusters = dbscan.fit_predict(time_freq_data)
+    num_clusters = len(np.unique(clusters[clusters != -1]))
+    print("----")
+    print(num_clusters)
+    print(idx_n)
 
-        # ------------------ Skip Feature Extraction if More Than 2 Clusters -------------------
-        if (num_clusters > 2 or num_clusters == 0):
-            #print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
-            continue
+    # Skip feature extraction if no valid clusters
+    if num_clusters > 2 or num_clusters == 0:
+        continue
 
-        # ------------------ Assign Global Pulse Numbers and Adjusted Times -------------------
-        for cluster_id in np.unique(clusters):
-            if cluster_id != -1:  # Noise
-                cluster_points = time_freq_data[clusters == cluster_id]
-                frequency_indices = bb[cluster_points[:, 0]]
-                time_indices = cluster_points[:, 1]
-                bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
-                center_frequency = np.mean(frequency_indices)
-                time_span = np.max(time_indices) - np.min(time_indices)
-                chirp_rate = bandwidth / time_span if time_span != 0 else 0
+    # ------------------ Feature Extraction -------------------
+    for cluster_id in np.unique(clusters):
+        if cluster_id != -1:  # Ignore noise points
+            cluster_points = time_freq_data[clusters == cluster_id]
+            frequency_indices = bb[cluster_points[:, 0]]
+            time_indices = cluster_points[:, 1]
 
-                start_time = np.min(time_indices) / fs  
-                end_time = np.max(time_indices) / fs  
-                adjusted_start_time = start_time + slow_time_offset
-                adjusted_end_time = end_time + slow_time_offset
+            bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
+            center_frequency = np.mean(frequency_indices)
+            time_span = np.max(time_indices) - np.min(time_indices)
+            chirp_rate = bandwidth / time_span if time_span != 0 else 0
 
-                pulse_duration = adjusted_end_time - adjusted_start_time
+            start_time = np.min(time_indices) / fs
+            end_time = np.max(time_indices) / fs
+            adjusted_start_time = start_time + slow_time_offset
+            adjusted_end_time = end_time + slow_time_offset
+            pulse_duration = adjusted_end_time - adjusted_start_time
 
-                unique_key = (idx_n, cluster_id) 
+            unique_key = (idx_n, cluster_id)
 
-                if unique_key not in global_cluster_params:
-                    global_cluster_params[unique_key] = []
+            if unique_key not in global_cluster_params:
+                global_cluster_params[unique_key] = []
 
-                global_cluster_params[unique_key].append({
-                    'pulse_number': global_pulse_number,  
-                    'bandwidth': bandwidth,
-                    'center_frequency': center_frequency,
-                    'chirp_rate': chirp_rate,
-                    'start_time_index': np.min(time_indices),
-                    'end_time_index': np.max(time_indices),
-                    'adjusted_start_time': adjusted_start_time, 
-                    'adjusted_end_time': adjusted_end_time,      
-                    'pulse_duration': pulse_duration            
-                })
-                print(idx_n)
-                global_pulse_number += 1 
+            global_cluster_params[unique_key].append({
+                'pulse_number': global_pulse_number,
+                'bandwidth': bandwidth,
+                'center_frequency': center_frequency,
+                'chirp_rate': chirp_rate,
+                'start_time_index': np.min(time_indices),
+                'end_time_index': np.max(time_indices),
+                'adjusted_start_time': adjusted_start_time,
+                'adjusted_end_time': adjusted_end_time,
+                'pulse_duration': pulse_duration
+            })
+
+            global_pulse_number += 1
 
         # # ------------------ Process I/Q Data -------------------
         # NFFT = 256

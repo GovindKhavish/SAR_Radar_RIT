@@ -4,24 +4,16 @@
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals # v3line15
 
-import pandas as pd
 import os
 import sqlite3
 import numpy as np
-import logging
-import math
-import cmath
-import struct
-import polars as pl
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
-from matplotlib import colors
 from scipy.signal import spectrogram
-from scipy.ndimage import uniform_filter
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path
 #-----------------------------------------------------------------------------------------
 # Define the subdirectory path
 _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
@@ -116,9 +108,23 @@ for idx_n in range(start_idx, end_idx + 1):
     aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
     # ------------------ DBSCAN Clustering -------------------
-    thresholded_aa_flat = aa_db_filtered.flatten()
+    #thresholded_aa_flat = aa_db_filtered.flatten()
 
-    time_freq_data = np.column_stack(np.where(aa_db_filtered > 0)) 
+    # ------------------- Shape Detection ---------------------
+    aa_filtered_clean = aa_db_filtered
+
+    # Compute gradients to highlight linear patterns in spectrogram
+    gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
+    gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
+    gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+
+    # Filter for forward-slash shaped gradients
+    forward_slash_mask = (gradient_x > 0.2) & (gradient_y < 0.2) & (gradient_magnitude > np.percentile(gradient_magnitude, 95))
+    chirp_candidates = np.where(forward_slash_mask, aa_filtered_clean, 0)
+    # ---------------------------------------------------------
+
+    time_freq_data = np.column_stack(np.where(chirp_candidates > 0))
+    clusters = DBSCAN(eps=20, min_samples=5).fit_predict(time_freq_data)
     frequency_indices = bb[time_freq_data[:, 0]]
 
     # DBSCAN

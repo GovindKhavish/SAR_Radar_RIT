@@ -4,29 +4,15 @@
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals # v3line15
 
-import pandas as pd
 import numpy as np
-import logging
-import math
-import cmath
-import struct
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
-from matplotlib import colors
-import matplotlib.gridspec as gridspec
-from scipy.interpolate import interp1d
 from scipy.signal import spectrogram
-from scipy.signal import windows
-from scipy.ndimage import uniform_filter
-from scipy.signal import butter, filtfilt
-from scipy.ndimage import uniform_filter
 from sklearn.cluster import DBSCAN
-import pprint 
 #-----------------------------------------------------------------------------------------
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path
 #-----------------------------------------------------------------------------------------
-# Define the subdirectory path
 _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
 
 # Check if the subdirectory exists
@@ -42,6 +28,10 @@ import sentinel1decoder
 #filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Lebanon/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+
 inputfile = filepath + filename
 
 l0file = sentinel1decoder.Level0File(inputfile)
@@ -61,19 +51,25 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 
 radar_data = l0file.get_burst_data(selected_burst)
 
+plt.figure(figsize=(14, 6))
+plt.imshow(10 * np.log10(abs(radar_data[:, :])), aspect='auto', interpolation='none', origin='lower')
+plt.colorbar(label='Amplitude')
+plt.xlabel('Fast Time')
+plt.ylabel('Slow Time')
+plt.title('Original Data')
+plt.show()
+
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 300
+idx_n = 527
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
-
-# Process the data using the CFAR function
-alarm_rate = 1e-9
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
 scale = 'dB'
 aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
+
 ax.set_xlabel('Time [us]', fontweight='bold')
 ax.set_ylabel('Freq [MHz]', fontweight='bold')
 ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
@@ -81,7 +77,6 @@ plt.tight_layout()
 plt.pause(0.1)
 
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
-# Define the adaptive thresholding function
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
     std_value = np.std(array)
@@ -92,7 +87,7 @@ def adaptive_threshold(array, factor=2):
 
 threshold,aa = adaptive_threshold(aa)
 
-fig = plt.figure(12, figsize=(6, 6), clear=True)
+fig = plt.figure(figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
 dd = ax.imshow(10 * np.log10(aa), aspect='auto', origin='lower', cmap='Greys')
 cbar = plt.colorbar(dd, ax=ax)
@@ -106,7 +101,6 @@ plt.show()
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
 freq_size = aa.shape[0] # Time
-
 
 # Create 2D Mask
 #vert_guard,vert_avg,hori_Guard,hori_avg
@@ -143,13 +137,13 @@ print("Threshold Value: ",alpha)
 thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
 
 # Plot the Threshold Map
-plt.figure(figsize=(10, 5))
-plt.imshow(thres_map, interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
-plt.title('Threshold map')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
-plt.tight_layout()
+# plt.figure(figsize=(10, 5))
+# plt.imshow(thres_map, interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
+# plt.title('Threshold map')
+# plt.xlabel('Time [us]')
+# plt.ylabel('Frequency [MHz]')
+# plt.colorbar(label='Filter Amplitude')
+# plt.tight_layout()
 
 # Detect the targets using the spectrogram data
 aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
@@ -164,17 +158,68 @@ plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
 # ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
-thresholded_aa_flat = aa_db_filtered .flatten()
+# thresholded_aa_flat = aa_db_filtered .flatten()
 
-# 2D (time, frequency)
-time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero points
+# # 2D (time, frequency)
+# time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero points
 
-# Frequency bins
-frequency_indices = bb[time_freq_data[:, 0]]
+# # Frequency bins
+# frequency_indices = bb[time_freq_data[:, 0]]
 
-# DBSCAN
-dbscan = DBSCAN(eps=6, min_samples=30)
-clusters = dbscan.fit_predict(time_freq_data)
+# # DBSCAN
+# dbscan = DBSCAN(eps=6, min_samples=30)
+# clusters = dbscan.fit_predict(time_freq_data)
+
+# Chirp Signal Detection (Post-CFAR Processing)
+# ----------------------------------------------------------------------------
+aa_filtered_clean = aa_db_filtered
+
+from scipy.ndimage import binary_dilation
+
+# Compute gradients to highlight linear patterns in the spectrogram
+gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
+gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
+gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+
+# Define a more flexible mask for forward-slash gradients
+forward_slash_mask = (gradient_x > 0.1) & (gradient_y < 0.1) & (gradient_magnitude > np.percentile(gradient_magnitude, 90))
+
+# Use binary dilation to expand the mask and allow for thicker lines
+dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))  # 3x3 kernel for small line widths
+
+# Apply the mask to the spectrogram to extract candidates
+chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
+
+# Visualize the modified chirp candidates
+plt.figure(figsize=(10, 5))
+plt.imshow(10 * np.log10(chirp_candidates + 1e-10), interpolation='none', aspect='auto', cmap='Greys', origin='lower')
+plt.title('Filtered Chirp Candidates with Line Widths')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Intensity [dB]')
+plt.tight_layout()
+plt.show()
+
+# ----------------------------------------------------------------------------
+
+# DBSCAN Clustering
+# Extract non-zero points as time-frequency data for clustering
+time_freq_data = np.column_stack(np.where(chirp_candidates > 0))
+
+# Perform DBSCAN clustering
+clusters = DBSCAN(eps=20, min_samples=5).fit_predict(time_freq_data)
+
+# Visualize Clustering Results
+plt.figure(figsize=(10, 5))
+plt.scatter(time_freq_data[:, 1], time_freq_data[:, 0], c=clusters, cmap='viridis', s=5)
+plt.title('DBSCAN Clustering of Chirp Signals')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Cluster ID')
+plt.tight_layout()
+plt.show()
+
+#---------
 
 # Plot threshold
 fig_thresh = plt.figure(13, figsize=(6, 6), clear=True)
@@ -287,23 +332,28 @@ for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
         if iq_start_idx <= idx <= iq_end_idx:  # Check if index is within the cluster range
             isolated_pulses_data[cluster_id][idx] = radar_section[idx]
 
-# Visualize the isolated data for each cluster
-fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
+# Check if there are any isolated pulses data (i.e., clusters)
+if len(isolated_pulses_data) > 0:
+    # Visualize the isolated data for each cluster
+    fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
 
-# If there's only one cluster, make sure axes is not a list
-if len(isolated_pulses_data) == 1:
-    axes = [axes]
+    # If there's only one cluster, make sure axes is not a list
+    if len(isolated_pulses_data) == 1:
+        axes = [axes]
 
-# Plot each cluster's isolated I/Q data
-for idx, (cluster_id, iq_data) in enumerate(isolated_pulses_data.items()):
-    # Plot the I/Q data (real and imaginary parts)
-    axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
-    axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
-    
-    axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
-    axes[idx].set_xlabel("Index")
-    axes[idx].set_ylabel("Amplitude")
-    axes[idx].legend()
+    # Plot each cluster's isolated I/Q data
+    for idx, (cluster_id, iq_data) in enumerate(isolated_pulses_data.items()):
+        # Plot the I/Q data (real and imaginary parts)
+        axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
+        axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
+        
+        axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
+        axes[idx].set_xlabel("Index")
+        axes[idx].set_ylabel("Amplitude")
+        axes[idx].legend()
 
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
+
+else:
+    print("No clusters detected, skipping the isolated I/Q data visualization.")
