@@ -8,6 +8,7 @@ import numpy as np
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from scipy.signal import spectrogram
+from scipy.ndimage import binary_dilation, label, find_objects
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
@@ -26,11 +27,11 @@ import sentinel1decoder
 
 # Mipur VH Filepath
 #filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
-# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Lebanon/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
-# filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
 inputfile = filepath + filename
 
@@ -61,7 +62,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 527
+idx_n = 935
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -157,32 +158,20 @@ plt.ylabel('Frequency [MHz]')
 plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
-# ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
-# thresholded_aa_flat = aa_db_filtered .flatten()
-
-# # 2D (time, frequency)
-# time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero points
-
-# # Frequency bins
-# frequency_indices = bb[time_freq_data[:, 0]]
-
-# # DBSCAN
-# dbscan = DBSCAN(eps=6, min_samples=30)
-# clusters = dbscan.fit_predict(time_freq_data)
-
-# Chirp Signal Detection (Post-CFAR Processing)
-# ----------------------------------------------------------------------------
-aa_filtered_clean = aa_db_filtered
-
-from scipy.ndimage import binary_dilation
+# Assume aa_filtered_clean is the spectrogram in dB format
+aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
 
 # Compute gradients to highlight linear patterns in the spectrogram
 gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
 gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
 gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-# Define a more flexible mask for forward-slash gradients
-forward_slash_mask = (gradient_x > 0.1) & (gradient_y < 0.1) & (gradient_magnitude > np.percentile(gradient_magnitude, 90))
+# Define a mask for forward-slash gradients
+forward_slash_mask = (
+    (gradient_x > 0.1) &  # Horizontal gradient must be significant
+    (gradient_y < 0.1) &  # Vertical gradient should be small
+    (gradient_magnitude > np.percentile(gradient_magnitude, 90))  # High gradient magnitude
+)
 
 # Use binary dilation to expand the mask and allow for thicker lines
 dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))  # 3x3 kernel for small line widths
@@ -190,24 +179,60 @@ dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))  #
 # Apply the mask to the spectrogram to extract candidates
 chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
 
-# Visualize the modified chirp candidates
+# Threshold for minimum line length (in pixels, accounting for angles)
+min_length = 20
+
+# Label connected components in the dilated mask
+labeled_mask, num_features = label(dilated_mask)
+
+# Find slices for each labeled component
+slices = find_objects(labeled_mask)
+
+# Create a new mask to include only components with sufficient length
+filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
+
+for i, slice_obj in enumerate(slices, start=1):
+    component = (labeled_mask[slice_obj] == i)
+    y_coords, x_coords = np.where(component)
+    
+    # Measure the bounding box diagonal (approximates major axis length)
+    if len(x_coords) > 0 and len(y_coords) > 0:
+        length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
+        
+        # Include the component if its length is greater than the threshold
+        if length >= min_length:
+            filtered_mask[slice_obj][component] = True
+
+# Apply the filtered mask to extract candidates that meet the length criterion
+length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
+
+# Visualize the chirp candidates after applying gradient and dilation
 plt.figure(figsize=(10, 5))
-plt.imshow(10 * np.log10(chirp_candidates + 1e-10), interpolation='none', aspect='auto', cmap='Greys', origin='lower')
-plt.title('Filtered Chirp Candidates with Line Widths')
+plt.imshow(10 * np.log10(chirp_candidates + 1e-10),interpolation='none',aspect='auto',cmap='Greys',origin='lower')
+plt.title('Filtered Chirp Candidates ')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
 plt.colorbar(label='Intensity [dB]')
 plt.tight_layout()
 plt.show()
 
+# Visualize the chirp candidates after length filtering
+plt.figure(figsize=(10, 5))
+plt.imshow(10 * np.log10(length_filtered_candidates + 1e-10),interpolation='none',aspect='auto',cmap='Greys',origin='lower')
+plt.title('Filtered Chirp Candidates')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Intensity [dB]')
+plt.tight_layout()
+plt.show()
 # ----------------------------------------------------------------------------
 
 # DBSCAN Clustering
 # Extract non-zero points as time-frequency data for clustering
-time_freq_data = np.column_stack(np.where(chirp_candidates > 0))
+time_freq_data = np.column_stack(np.where(length_filtered_candidates > 0))
 
 # Perform DBSCAN clustering
-clusters = DBSCAN(eps=20, min_samples=5).fit_predict(time_freq_data)
+clusters = DBSCAN(eps=4, min_samples=10).fit_predict(time_freq_data)
 
 # Visualize Clustering Results
 plt.figure(figsize=(10, 5))

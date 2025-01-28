@@ -9,6 +9,7 @@ import sqlite3
 import numpy as np
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
+from scipy.ndimage import binary_dilation, label, find_objects
 from scipy.signal import spectrogram
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
@@ -68,16 +69,7 @@ for idx_n in range(start_idx, end_idx + 1):
     fig = plt.figure(11, figsize=(6, 6), clear=True)
     ax = fig.add_subplot(111)
     scale = 'dB'
-    aa, bb, cc, dd = ax.specgram(
-        radar_data[idx_n, :], 
-        NFFT=256, 
-        Fs=fs / 1e6, 
-        detrend=None, 
-        window=np.hanning(256), 
-        scale=scale, 
-        noverlap=200, 
-        cmap='Greys'
-    )
+    aa, bb, cc, dd = ax.specgram(radar_data[idx_n, :], NFFT=256, Fs=fs / 1e6, detrend=None, window=np.hanning(256), scale=scale, noverlap=200, cmap='Greys')
 
     # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
     threshold,aa = Spectogram_FunctionsV3.adaptive_threshold(aa)
@@ -111,20 +103,39 @@ for idx_n in range(start_idx, end_idx + 1):
     #thresholded_aa_flat = aa_db_filtered.flatten()
 
     # ------------------- Shape Detection ---------------------
-    aa_filtered_clean = aa_db_filtered
+    aa_filtered_clean = aa_db_filtered  
 
-    # Compute gradients to highlight linear patterns in spectrogram
-    gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
-    gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
+    gradient_x = np.gradient(aa_filtered_clean, axis=1)
+    gradient_y = np.gradient(aa_filtered_clean, axis=0)
     gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-    # Filter for forward-slash shaped gradients
-    forward_slash_mask = (gradient_x > 0.2) & (gradient_y < 0.2) & (gradient_magnitude > np.percentile(gradient_magnitude, 95))
-    chirp_candidates = np.where(forward_slash_mask, aa_filtered_clean, 0)
-    # ---------------------------------------------------------
+    forward_slash_mask = (
+        (gradient_x > 0.1) &  
+        (gradient_y < 0.1) & 
+        (gradient_magnitude > np.percentile(gradient_magnitude, 90))
+    )
 
-    time_freq_data = np.column_stack(np.where(chirp_candidates > 0))
-    clusters = DBSCAN(eps=20, min_samples=5).fit_predict(time_freq_data)
+    dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))
+
+    chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
+    min_length = 20
+    labeled_mask, num_features = label(dilated_mask)
+    slices = find_objects(labeled_mask)
+    filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
+
+    for i, slice_obj in enumerate(slices, start=1):
+        component = (labeled_mask[slice_obj] == i)
+        y_coords, x_coords = np.where(component)
+        
+        if len(x_coords) > 0 and len(y_coords) > 0:
+            length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
+            
+            if length >= min_length:
+                filtered_mask[slice_obj][component] = True
+
+    length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
+    # ---------------------------------------------------------
+    time_freq_data = np.column_stack(np.where(length_filtered_candidates > 0))
     frequency_indices = bb[time_freq_data[:, 0]]
 
     # DBSCAN
@@ -132,7 +143,7 @@ for idx_n in range(start_idx, end_idx + 1):
         print(f"No targets detected for rangeline {idx_n}.")
         continue  
     else: 
-        dbscan = DBSCAN(eps=6, min_samples=30)
+        dbscan = DBSCAN(eps=20, min_samples=5)
         clusters = dbscan.fit_predict(time_freq_data)
 
         num_clusters = len(np.unique(clusters[clusters != -1]))
@@ -150,7 +161,7 @@ for idx_n in range(start_idx, end_idx + 1):
                 frequency_indices = bb[cluster_points[:, 0]]
                 time_indices = cluster_points[:, 1]
                 bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
-                center_frequency = np.mean(frequency_indices)
+                center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
                 time_span = np.max(time_indices) - np.min(time_indices)
                 chirp_rate = bandwidth / time_span if time_span != 0 else 0
 

@@ -163,3 +163,47 @@ ax[1].set_ylabel("Frequency (MHz)")
 
 plt.tight_layout()
 plt.show()
+
+
+# ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
+# thresholded_aa_flat = aa_db_filtered .flatten()
+
+# # 2D (time, frequency)
+# time_freq_data = np.column_stack(np.where(aa_db_filtered > 0))  # Get non-zero points
+
+# # Frequency bins
+# frequency_indices = bb[time_freq_data[:, 0]]
+
+# # DBSCAN
+# dbscan = DBSCAN(eps=6, min_samples=30)
+# clusters = dbscan.fit_predict(time_freq_data)
+
+# Chirp Signal Detection (Post-CFAR Processing)
+# ----------------------------------------------------------------------------
+# aa_filtered_clean = aa_db_filtered
+
+# from scipy.ndimage import binary_dilation
+
+# # Compute gradients to highlight linear patterns in the spectrogram
+# gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
+# gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
+# gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+
+# # Define a more flexible mask for forward-slash gradients
+# forward_slash_mask = (gradient_x > 0.1) & (gradient_y < 0.1) & (gradient_magnitude > np.percentile(gradient_magnitude, 90))
+
+# # Use binary dilation to expand the mask and allow for thicker lines
+# dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))  # 3x3 kernel for small line widths
+
+# # Apply the mask to the spectrogram to extract candidates
+# chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
+
+# # Visualize the modified chirp candidates
+# plt.figure(figsize=(10, 5))
+# plt.imshow(10 * np.log10(chirp_candidates + 1e-10), interpolation='none', aspect='auto', cmap='Greys', origin='lower')
+# plt.title('Filtered Chirp Candidates with Line Widths')
+# plt.xlabel('Time [us]')
+# plt.ylabel('Frequency [MHz]')
+# plt.colorbar(label='Intensity [dB]')
+# plt.tight_layout()
+# plt.show()
