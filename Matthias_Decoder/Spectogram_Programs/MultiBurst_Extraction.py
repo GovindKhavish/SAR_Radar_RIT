@@ -1,0 +1,498 @@
+#=========================================================================================
+# _common_imports_v3_py.py ]
+#
+#=========================================================================================
+from __future__ import division, print_function, unicode_literals # v3line15
+
+import os
+import sqlite3
+import numpy as np
+import pandas as pl
+import Spectogram_FunctionsV3
+import matplotlib.pyplot as plt
+from scipy.ndimage import binary_dilation, label, find_objects
+from scipy.signal import spectrogram
+from sklearn.cluster import DBSCAN
+#-----------------------------------------------------------------------------------------
+import sys
+from pathlib import Path
+#-----------------------------------------------------------------------------------------
+# Define the subdirectory path
+_simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
+
+# Check if the subdirectory exists
+if _simraddir.exists():
+    sys.path.insert(0, str(_simraddir.resolve()))
+    print("Using the right Sentinal Library")
+else:
+    print(f"Directory {_simraddir} does not exist.")
+
+import sentinel1decoder
+
+# Mipur VH Filepath
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+inputfile = filepath + filename
+
+l0file = sentinel1decoder.Level0File(inputfile)
+
+sent1_meta = l0file.packet_metadata
+bust_info = l0file.burst_info
+sent1_ephe = l0file.ephemeris
+
+all_bursts = l0file.burst_info['burst_index'].unique()
+
+global_pulse_number = 1
+
+for selected_burst in all_bursts:
+    selection = l0file.get_burst_metadata(selected_burst)
+
+    if selection['Signal Type'].unique()[0] != 0:
+        continue 
+
+    print(f"Processing Burst {selected_burst}...")
+    radar_data = l0file.get_burst_data(selected_burst)
+
+    #------------------------ Apply CFAR filtering --------------------------------
+    start_idx = 0
+    end_idx = radar_data.shape[0] - 1 
+    fs = 46918402.800000004  
+
+    global_cluster_params = {}
+    global_isolated_pulses_data = {}
+
+    for idx_n in range(start_idx, end_idx + 1):
+        radar_section = radar_data[idx_n, :]
+        slow_time_offset = idx_n / fs 
+
+        # ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
+        fig = plt.figure(11, figsize=(6, 6), clear=True)
+        ax = fig.add_subplot(111)
+        scale = 'dB'
+        aa, bb, cc, dd = ax.specgram(radar_data[idx_n, :], NFFT=256, Fs=fs / 1e6, detrend=None, window=np.hanning(256), scale=scale, noverlap=200, cmap='Greys')
+
+        # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
+        threshold,aa = Spectogram_FunctionsV3.adaptive_threshold(aa)
+
+        #------------------------ Apply CFAR filtering --------------------------------
+        # Radar data dimensions
+        time_size = aa.shape[1] # Freq
+        freq_size = aa.shape[0] # Time
+
+        # Create 2D Mask
+        vert_guard = 12
+        vert_avg = 30
+        hori_guard = 10
+        hori_avg = 30
+        alarm_rate = 1e-9
+
+
+        cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
+
+        padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
+
+        alpha = Spectogram_FunctionsV3.set_alpha(Spectogram_FunctionsV3.get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
+
+        thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
+
+        aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
+
+        # ------------------- Shape Detection ---------------------
+        aa_filtered_clean = aa_db_filtered  
+
+        gradient_x = np.gradient(aa_filtered_clean, axis=1)
+        gradient_y = np.gradient(aa_filtered_clean, axis=0)
+        gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+
+        forward_slash_mask = (
+            (gradient_x > 0.1) &  
+            (gradient_y < 0.1) & 
+            (gradient_magnitude > np.percentile(gradient_magnitude, 90)))
+
+        dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))
+
+        chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
+        min_length = 20
+        labeled_mask, num_features = label(dilated_mask)
+        slices = find_objects(labeled_mask)
+        filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
+
+        for i, slice_obj in enumerate(slices, start=1):
+            component = (labeled_mask[slice_obj] == i)
+            y_coords, x_coords = np.where(component)
+            
+            if len(x_coords) > 0 and len(y_coords) > 0:
+                length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
+                
+                if length >= min_length:
+                    filtered_mask[slice_obj][component] = True
+
+        length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
+        # ---------------------------------------------------------
+        time_freq_data = np.column_stack(np.where(length_filtered_candidates > 0))
+        frequency_indices = bb[time_freq_data[:, 0]]
+
+        # DBSCAN
+        if time_freq_data.shape[0] == 0:
+            print(f"No targets detected for rangeline {idx_n}.")
+            continue  
+        else: 
+            dbscan = DBSCAN(eps=20, min_samples=5)
+            clusters = dbscan.fit_predict(time_freq_data)
+
+            num_clusters = len(np.unique(clusters[clusters != -1]))
+            print(f"Number of clusters for rangeline {idx_n}: {num_clusters}")
+
+            # ------------------ Skip Feature Extraction if More Than 2 Clusters -------------------
+            if (num_clusters > 2 or num_clusters == 0):
+                print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
+                continue
+
+            # ------------------ Assign Global Pulse Numbers and Adjusted Times -------------------
+            for cluster_id in np.unique(clusters):
+                if cluster_id != -1:  
+                    cluster_points = time_freq_data[clusters == cluster_id]
+                    frequency_indices = bb[cluster_points[:, 0]]
+                    time_indices = cluster_points[:, 1]
+
+                    bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
+                    center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
+                    time_span = np.max(time_indices) - np.min(time_indices)
+                    chirp_rate = bandwidth / time_span if time_span != 0 else 0
+
+                    start_time = np.min(time_indices) / fs  
+                    end_time = np.max(time_indices) / fs  
+                    adjusted_start_time = start_time + slow_time_offset
+                    adjusted_end_time = end_time + slow_time_offset
+                    pulse_duration = adjusted_end_time - adjusted_start_time
+
+                    unique_key = (selected_burst, idx_n, cluster_id)  
+
+                    if unique_key not in global_cluster_params:
+                        global_cluster_params[unique_key] = []
+
+                    global_cluster_params[unique_key].append({
+                        'burst_number': selected_burst,  
+                        'pulse_number': global_pulse_number,
+                        'bandwidth': bandwidth,
+                        'center_frequency': center_frequency,
+                        'chirp_rate': chirp_rate,
+                        'start_time_index': np.min(time_indices),
+                        'end_time_index': np.max(time_indices),
+                        'adjusted_start_time': adjusted_start_time,
+                        'adjusted_end_time': adjusted_end_time,
+                        'pulse_duration': pulse_duration
+                    })
+                    global_pulse_number += 1  
+
+            # ------------------ Process I/Q Data -------------------
+            NFFT = 256
+            noverlap = 200
+            sampling_rate = fs
+            time_step = (NFFT - noverlap) / sampling_rate
+            isolated_pulses_data = {}
+
+            cluster_time_indices = {}
+            for (rangeline_idx, cluster_id), params_list in global_cluster_params.items():
+                for params in params_list:
+                    start_time_idx = params['start_time_index']
+                    end_time_idx = params['end_time_index']
+                    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
+                    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+                    
+                    pulse_number = params['pulse_number']
+                    if pulse_number not in cluster_time_indices:
+                        cluster_time_indices[pulse_number] = []
+                    cluster_time_indices[pulse_number].append((rangeline_idx, cluster_id, iq_start_idx, iq_end_idx))
+
+            for pulse_number in cluster_time_indices:
+                isolated_pulses_data[pulse_number] = []
+
+            for idx in range(len(radar_section)):
+                for pulse_number, clusters in cluster_time_indices.items():
+                    for (rangeline_idx, cluster_id, iq_start_idx, iq_end_idx) in clusters:
+                        if iq_start_idx <= idx <= iq_end_idx:
+                            if len(isolated_pulses_data[pulse_number]) <= idx:
+                                isolated_pulses_data[pulse_number].extend([0] * (idx - len(isolated_pulses_data[pulse_number]) + 1))
+                            isolated_pulses_data[pulse_number][idx] = radar_section[idx]
+                            break  
+
+            
+            for pulse_number in isolated_pulses_data:
+                isolated_pulses_data[pulse_number] = np.array(isolated_pulses_data[pulse_number], dtype=complex)
+
+            
+            for pulse_number, data in isolated_pulses_data.items():
+                if pulse_number not in global_isolated_pulses_data:
+                    global_isolated_pulses_data[pulse_number] = []
+                global_isolated_pulses_data[pulse_number].append(data) 
+
+
+
+# ------------------ Database Storage -------------------
+db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+db_name = "pulse_characteristics_Mipur.db"
+db_path = os.path.join(db_folder, db_name)
+
+# Create folder if it doesn't exist
+if not os.path.exists(db_folder):
+    os.makedirs(db_folder)
+    print(f"Folder '{db_folder}' created.")
+
+# Database connection
+conn = sqlite3.connect(db_path)
+
+# Prepare the pulse characteristics data for storage
+pulse_details = {
+    "pulse_number": [],
+    "bandwidth": [],
+    "center_frequency": [],
+    "chirp_rate": [],
+    "start_time_index": [],
+    "end_time_index": [],
+    "adjusted_start_time": [],
+    "adjusted_end_time": [],
+    "pulse_duration": [],
+    "dod": [],           # Set DOD to 0
+    "toa": [],           # New parameter: TOA (Adjusted Start Time)
+    "aoa": [],           # New parameter: AOA
+    "amplitude": [],     # New parameter: Amplitude
+    "pos_x": [],         # New parameter: Pos_x
+    "pos_y": [],         # New parameter: Pos_y
+    "pos_z": [],         # New parameter: Pos_z
+    "velo": [],          # New parameter: Velo
+    "intra_type": [],    # New parameter: Intra Type
+    "sample_rate": [],   # New parameter: Sample Rate
+    "intramod": []       # New parameter: Intramod
+}
+
+# -------------------- Begin Insertion Loop --------------------
+
+with conn:
+    cursor = conn.cursor()
+    # Drop the table if it exists, to ensure the schema is correct
+    cursor.execute("DROP TABLE IF EXISTS pulse_data")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS pulse_data (
+        pulse_number INTEGER PRIMARY KEY,
+        burst_number INTEGER,
+        bandwidth REAL,
+        center_frequency REAL,
+        chirp_rate REAL,
+        start_time_index INTEGER,
+        end_time_index INTEGER,
+        adjusted_start_time REAL,
+        adjusted_end_time REAL,
+        pulse_duration REAL,
+        dod REAL DEFAULT 0,               
+        toa REAL,
+        aoa REAL DEFAULT 0,
+        amplitude REAL DEFAULT 0,
+        pos_x REAL DEFAULT 0,
+        pos_y REAL DEFAULT 0,
+        pos_z REAL DEFAULT 0,
+        velo REAL DEFAULT 0,
+        intra_type TEXT DEFAULT 'IW',
+        sample_rate REAL,
+        intramod REAL DEFAULT 0
+    )
+    """)
+    
+
+    # Create the `iq_data` table for storing I/Q data
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS iq_data (
+        pulse_number INTEGER,
+        iq_data BLOB,
+        FOREIGN KEY (pulse_number) REFERENCES pulse_data (pulse_number)
+    )
+    """)
+    # -------------------- Insertion of Pulse Data --------------------
+    for unique_key, params_list in global_cluster_params.items():
+        for params in params_list:
+            # Standard unit conversion
+            bandwidth_hz = params["bandwidth"] * 1e6  # MHz to Hz
+            center_frequency_hz = params["center_frequency"] * 1e6  # MHz to Hz
+            adjusted_start_time_sec = params["adjusted_start_time"] * 1e-6  # µs to sec
+            adjusted_end_time_sec = params["adjusted_end_time"] * 1e-6  # µs to sec
+            pulse_duration_sec = params["pulse_duration"] * 1e-6  # µs to sec
+            toa_sec = params["adjusted_start_time"] * 1e-6  # µs to sec
+
+            # Insert data into pulse_data table, including burst number
+            cursor.execute(
+                """INSERT OR REPLACE INTO pulse_data (
+                    pulse_number, burst_number, bandwidth, center_frequency, chirp_rate,
+                    start_time_index, end_time_index,
+                    adjusted_start_time, adjusted_end_time, pulse_duration,
+                    dod, toa, aoa, amplitude, pos_x, pos_y, pos_z, velo, intra_type, sample_rate, intramod
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    int(params["pulse_number"]),  # Global pulse number
+                    int(params["burst_number"]),  # Burst number
+                    bandwidth_hz, center_frequency_hz, params["chirp_rate"],
+                    int(params["start_time_index"]), int(params["end_time_index"]),
+                    adjusted_start_time_sec, adjusted_end_time_sec, pulse_duration_sec,
+                    0,  # Set DOD to 0
+                    toa_sec,  # TOA
+                    0,  # AOA (default 0)
+                    0,  # Amplitude (default 0)
+                    0,  # Pos_x (default 0)
+                    0,  # Pos_y (default 0)
+                    0,  # Pos_z (default 0)
+                    0,  # Velo (default 0)
+                    "IW",  # Intra Type (default 'IW')
+                    fs,  # Sample Rate
+                    0  # Intramod (default 0)
+                )
+            )
+    # Commit the changes to the database
+    conn.commit()
+
+    # -------------------- Insertion of I/Q Data --------------------
+    for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
+        if len(iq_data_segments) == 0:
+            print(f"Warning: No I/Q data for pulse number {pulse_number}")
+            continue  # Skip this pulse if no data
+
+        for segment in iq_data_segments:
+            # Serialize the complex I/Q data to binary format (no need for string conversion)
+            iq_data_blob = segment.tobytes()
+
+            # Insert the I/Q data as binary (BLOB) into the database
+            cursor.execute(
+                """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
+                (pulse_number, iq_data_blob)
+            )
+            
+conn.close()
+print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
+
+
+# db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+# db_name = "pulse_characteristics_Mipur.db"
+# db_path = os.path.join(db_folder, db_name)
+
+# if not os.path.exists(db_folder):
+#     os.makedirs(db_folder)
+#     print(f"Folder '{db_folder}' created.")
+
+# # Database connection
+# conn = sqlite3.connect(db_path)
+
+# # Prepare the pulse characteristics data for storage
+# pulse_details = {
+#     "pulse_number": [],
+#     "bandwidth": [],
+#     "center_frequency": [],
+#     "chirp_rate": [],
+#     "start_time_index": [],
+#     "end_time_index": [],
+#     "adjusted_start_time": [],
+#     "adjusted_end_time": [],
+#     "pulse_duration": []
+# }
+
+# for unique_key, params_list in global_cluster_params.items():
+#     for params in params_list:
+#         pulse_details["pulse_number"].append(params["pulse_number"])
+#         pulse_details["bandwidth"].append(params["bandwidth"])
+#         pulse_details["center_frequency"].append(params["center_frequency"])
+#         pulse_details["chirp_rate"].append(params["chirp_rate"])
+#         pulse_details["start_time_index"].append(params["start_time_index"])
+#         pulse_details["end_time_index"].append(params["end_time_index"])
+#         pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
+#         pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
+#         pulse_details["pulse_duration"].append(params["pulse_duration"])
+
+# pulse_data_df = pl.DataFrame(pulse_details)
+
+# # Store the pulse data and IQ data
+# with conn:
+#     cursor = conn.cursor()
+    
+#     # Create the `pulse_data` table for pulse characteristics
+#     cursor.execute("""
+#     CREATE TABLE IF NOT EXISTS pulse_data (
+#         pulse_number INTEGER PRIMARY KEY,
+#         bandwidth REAL,
+#         center_frequency REAL,
+#         chirp_rate REAL,
+#         start_time_index INTEGER,
+#         end_time_index INTEGER,
+#         adjusted_start_time REAL,
+#         adjusted_end_time REAL,
+#         pulse_duration REAL
+#     )
+#     """)
+
+#     # Create the `iq_data` table for storing I/Q data
+#     cursor.execute("""
+#     CREATE TABLE IF NOT EXISTS iq_data (
+#         pulse_number INTEGER,
+#         iq_data BLOB,
+#         FOREIGN KEY (pulse_number) REFERENCES pulse_data (pulse_number)
+#     )
+#     """)
+
+#     # Insert pulse characteristics into the `pulse_data` table
+#     conn.executemany(
+#         """INSERT OR REPLACE INTO pulse_data (
+#             pulse_number, bandwidth, center_frequency, chirp_rate,
+#             start_time_index, end_time_index,
+#             adjusted_start_time, adjusted_end_time, pulse_duration
+#         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+#         pulse_data_df.to_numpy().tolist()
+#     )
+    
+#     # Insert I/Q data into the `iq_data` table
+#     for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
+#         # Concatenate all segments for this pulse into a single array
+#         iq_data = np.concatenate(iq_data_segments)
+        
+#         # Serialize the I/Q data to a binary format
+#         iq_data_blob = iq_data.tobytes()
+        
+#         # Store the I/Q data as a BLOB
+#         cursor.execute(
+#             """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
+#             (pulse_number, iq_data_blob)
+#         )
+
+# conn.close()
+# print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
+
+
+# def plot_iq_data(iq_data, pulse_number):
+#     """
+#     Plots the I/Q data for a specific pulse for debugging.
+    
+#     Args:
+#         iq_data (np.ndarray): The I/Q data for the pulse.
+#         pulse_number (int): The pulse number for the plot title.
+#     """
+#     # Ensure there is I/Q data
+#     if iq_data is None or len(iq_data) == 0:
+#         print(f"No I/Q data for Pulse {pulse_number}")
+#         return
+    
+#     # Time axis (based on the number of samples)
+#     time = np.arange(len(iq_data))
+    
+#     # Plotting the I/Q data (Real and Imaginary parts)
+#     plt.figure(figsize=(12, 6))
+#     plt.plot(time, np.real(iq_data), label=f"Pulse {pulse_number} - Real (I)", color='blue')
+#     plt.plot(time, np.imag(iq_data), label=f"Pulse {pulse_number} - Imaginary (Q)", color='red')
+    
+#     plt.title(f"Pulse {pulse_number} - I/Q Data")
+#     plt.xlabel("Time (samples)")
+#     plt.ylabel("Amplitude")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+# # Example usage for debugging
+# for pulse_number, data in isolated_pulses_data.items():
+#     print(f"Debugging Pulse {pulse_number}")
+#     plot_iq_data(data, pulse_number)

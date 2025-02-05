@@ -7,6 +7,7 @@ from __future__ import division, print_function, unicode_literals # v3line15
 import os
 import sqlite3
 import numpy as np
+import pandas as pl
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from scipy.ndimage import binary_dilation, label, find_objects
@@ -379,134 +380,130 @@ conn.close()
 print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
 
 
+db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+db_name = "pulse_characteristics_Mipur.db"
+db_path = os.path.join(db_folder, db_name)
 
+if not os.path.exists(db_folder):
+    os.makedirs(db_folder)
+    print(f"Folder '{db_folder}' created.")
 
+# Database connection
+conn = sqlite3.connect(db_path)
 
+# Prepare the pulse characteristics data for storage
+pulse_details = {
+    "pulse_number": [],
+    "bandwidth": [],
+    "center_frequency": [],
+    "chirp_rate": [],
+    "start_time_index": [],
+    "end_time_index": [],
+    "adjusted_start_time": [],
+    "adjusted_end_time": [],
+    "pulse_duration": []
+}
 
-# db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
-# db_name = "pulse_characteristics_Mipur.db"
-# db_path = os.path.join(db_folder, db_name)
+for unique_key, params_list in global_cluster_params.items():
+    for params in params_list:
+        pulse_details["pulse_number"].append(params["pulse_number"])
+        pulse_details["bandwidth"].append(params["bandwidth"])
+        pulse_details["center_frequency"].append(params["center_frequency"])
+        pulse_details["chirp_rate"].append(params["chirp_rate"])
+        pulse_details["start_time_index"].append(params["start_time_index"])
+        pulse_details["end_time_index"].append(params["end_time_index"])
+        pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
+        pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
+        pulse_details["pulse_duration"].append(params["pulse_duration"])
 
-# if not os.path.exists(db_folder):
-#     os.makedirs(db_folder)
-#     print(f"Folder '{db_folder}' created.")
+pulse_data_df = pl.DataFrame(pulse_details)
 
-# # Database connection
-# conn = sqlite3.connect(db_path)
-
-# # Prepare the pulse characteristics data for storage
-# pulse_details = {
-#     "pulse_number": [],
-#     "bandwidth": [],
-#     "center_frequency": [],
-#     "chirp_rate": [],
-#     "start_time_index": [],
-#     "end_time_index": [],
-#     "adjusted_start_time": [],
-#     "adjusted_end_time": [],
-#     "pulse_duration": []
-# }
-
-# for unique_key, params_list in global_cluster_params.items():
-#     for params in params_list:
-#         pulse_details["pulse_number"].append(params["pulse_number"])
-#         pulse_details["bandwidth"].append(params["bandwidth"])
-#         pulse_details["center_frequency"].append(params["center_frequency"])
-#         pulse_details["chirp_rate"].append(params["chirp_rate"])
-#         pulse_details["start_time_index"].append(params["start_time_index"])
-#         pulse_details["end_time_index"].append(params["end_time_index"])
-#         pulse_details["adjusted_start_time"].append(params["adjusted_start_time"])
-#         pulse_details["adjusted_end_time"].append(params["adjusted_end_time"])
-#         pulse_details["pulse_duration"].append(params["pulse_duration"])
-
-# pulse_data_df = pl.DataFrame(pulse_details)
-
-# # Store the pulse data and IQ data
-# with conn:
-#     cursor = conn.cursor()
+# Store the pulse data and IQ data
+with conn:
+    cursor = conn.cursor()
     
-#     # Create the `pulse_data` table for pulse characteristics
-#     cursor.execute("""
-#     CREATE TABLE IF NOT EXISTS pulse_data (
-#         pulse_number INTEGER PRIMARY KEY,
-#         bandwidth REAL,
-#         center_frequency REAL,
-#         chirp_rate REAL,
-#         start_time_index INTEGER,
-#         end_time_index INTEGER,
-#         adjusted_start_time REAL,
-#         adjusted_end_time REAL,
-#         pulse_duration REAL
-#     )
-#     """)
+    # Create the `pulse_data` table for pulse characteristics
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS pulse_data (
+        pulse_number INTEGER PRIMARY KEY,
+        bandwidth REAL,
+        center_frequency REAL,
+        chirp_rate REAL,
+        start_time_index INTEGER,
+        end_time_index INTEGER,
+        adjusted_start_time REAL,
+        adjusted_end_time REAL,
+        pulse_duration REAL
+    )
+    """)
 
-#     # Create the `iq_data` table for storing I/Q data
-#     cursor.execute("""
-#     CREATE TABLE IF NOT EXISTS iq_data (
-#         pulse_number INTEGER,
-#         iq_data BLOB,
-#         FOREIGN KEY (pulse_number) REFERENCES pulse_data (pulse_number)
-#     )
-#     """)
+    # Create the `iq_data` table for storing I/Q data
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS iq_data (
+        pulse_number INTEGER,
+        iq_data BLOB,
+        FOREIGN KEY (pulse_number) REFERENCES pulse_data (pulse_number)
+    )
+    """)
 
-#     # Insert pulse characteristics into the `pulse_data` table
-#     conn.executemany(
-#         """INSERT OR REPLACE INTO pulse_data (
-#             pulse_number, bandwidth, center_frequency, chirp_rate,
-#             start_time_index, end_time_index,
-#             adjusted_start_time, adjusted_end_time, pulse_duration
-#         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-#         pulse_data_df.to_numpy().tolist()
-#     )
+    # Insert pulse characteristics into the `pulse_data` table
+    conn.executemany(
+        """INSERT OR REPLACE INTO pulse_data (
+            pulse_number, bandwidth, center_frequency, chirp_rate,
+            start_time_index, end_time_index,
+            adjusted_start_time, adjusted_end_time, pulse_duration
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        pulse_data_df.to_numpy().tolist()
+    )
     
-#     # Insert I/Q data into the `iq_data` table
-#     for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
-#         # Concatenate all segments for this pulse into a single array
-#         iq_data = np.concatenate(iq_data_segments)
+    # Insert I/Q data into the `iq_data` table
+    for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
+        # Concatenate all segments for this pulse into a single array
+        iq_data = np.concatenate(iq_data_segments)
         
-#         # Serialize the I/Q data to a binary format
-#         iq_data_blob = iq_data.tobytes()
+        # Serialize the I/Q data to a binary format
+        iq_data_blob = iq_data.tobytes()
         
-#         # Store the I/Q data as a BLOB
-#         cursor.execute(
-#             """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
-#             (pulse_number, iq_data_blob)
-#         )
+        # Store the I/Q data as a BLOB
+        cursor.execute(
+            """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
+            (pulse_number, iq_data_blob)
+        )
 
-# conn.close()
-# print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
+conn.close()
+print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
 
 
-# def plot_iq_data(iq_data, pulse_number):
-#     """
-#     Plots the I/Q data for a specific pulse for debugging.
+def plot_iq_data(iq_data, pulse_number):
+    """
+    Plots the I/Q data for a specific pulse for debugging.
     
-#     Args:
-#         iq_data (np.ndarray): The I/Q data for the pulse.
-#         pulse_number (int): The pulse number for the plot title.
-#     """
-#     # Ensure there is I/Q data
-#     if iq_data is None or len(iq_data) == 0:
-#         print(f"No I/Q data for Pulse {pulse_number}")
-#         return
+    Args:
+        iq_data (np.ndarray): The I/Q data for the pulse.
+        pulse_number (int): The pulse number for the plot title.
+    """
+    # Ensure there is I/Q data
+    if iq_data is None or len(iq_data) == 0:
+        print(f"No I/Q data for Pulse {pulse_number}")
+        return
     
-#     # Time axis (based on the number of samples)
-#     time = np.arange(len(iq_data))
+    # Time axis (based on the number of samples)
+    time = np.arange(len(iq_data))
     
-#     # Plotting the I/Q data (Real and Imaginary parts)
-#     plt.figure(figsize=(12, 6))
-#     plt.plot(time, np.real(iq_data), label=f"Pulse {pulse_number} - Real (I)", color='blue')
-#     plt.plot(time, np.imag(iq_data), label=f"Pulse {pulse_number} - Imaginary (Q)", color='red')
+    # Plotting the I/Q data (Real and Imaginary parts)
+    plt.figure(figsize=(12, 6))
+    plt.plot(time, np.real(iq_data), label=f"Pulse {pulse_number} - Real (I)", color='blue')
+    plt.plot(time, np.imag(iq_data), label=f"Pulse {pulse_number} - Imaginary (Q)", color='red')
     
-#     plt.title(f"Pulse {pulse_number} - I/Q Data")
-#     plt.xlabel("Time (samples)")
-#     plt.ylabel("Amplitude")
-#     plt.legend()
-#     plt.grid(True)
-#     plt.tight_layout()
-#     plt.show()
+    plt.title(f"Pulse {pulse_number} - I/Q Data")
+    plt.xlabel("Time (samples)")
+    plt.ylabel("Amplitude")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
-# # Example usage for debugging
-# for pulse_number, data in isolated_pulses_data.items():
-#     print(f"Debugging Pulse {pulse_number}")
-#     plot_iq_data(data, pulse_number)
+# Example usage for debugging
+for pulse_number, data in isolated_pulses_data.items():
+    print(f"Debugging Pulse {pulse_number}")
+    plot_iq_data(data, pulse_number)

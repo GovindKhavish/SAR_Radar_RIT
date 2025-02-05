@@ -330,9 +330,6 @@ for cluster_id, params in cluster_params.items():
 # cluster_params_array = np.array([[cluster_id, params['bandwidth'], params['center_frequency'], params['chirp_rate'], params['start_time_index'], params['end_time_index']]
 #                                  for cluster_id, params in cluster_params.items()])
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 NFFT = 256
 noverlap = 200
 sampling_rate = fs
