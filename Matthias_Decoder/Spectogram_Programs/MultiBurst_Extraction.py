@@ -7,7 +7,7 @@ from __future__ import division, print_function, unicode_literals # v3line15
 import os
 import sqlite3
 import numpy as np
-import pandas as pl
+import pandas as pd
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from scipy.ndimage import binary_dilation, label, find_objects
@@ -30,9 +30,21 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+# filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+
+# Damascus VH Filepath
+#.m filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+#filename = '\s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+
+# Damascus VH Filepath
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\WhiteSand_USA\2021_12_14\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE"
+filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
+
+
 inputfile = filepath + filename
 
 l0file = sentinel1decoder.Level0File(inputfile)
@@ -41,11 +53,14 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-all_bursts = l0file.burst_info['burst_index'].unique()
-
 global_pulse_number = 1
 
-for selected_burst in all_bursts:
+echo_bursts = l0file.burst_info[l0file.burst_info['Signal Type'] == 0]
+burst_array = np.array(echo_bursts['Burst'])
+print("Echo Burst Numbers:", burst_array)
+
+
+for selected_burst in burst_array:
     selection = l0file.get_burst_metadata(selected_burst)
 
     if selection['Signal Type'].unique()[0] != 0:
@@ -110,10 +125,10 @@ for selected_burst in all_bursts:
             (gradient_y < 0.1) & 
             (gradient_magnitude > np.percentile(gradient_magnitude, 90)))
 
-        dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))
+        dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
 
         chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
-        min_length = 20
+        min_length = 10
         labeled_mask, num_features = label(dilated_mask)
         slices = find_objects(labeled_mask)
         filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
@@ -135,18 +150,18 @@ for selected_burst in all_bursts:
 
         # DBSCAN
         if time_freq_data.shape[0] == 0:
-            print(f"No targets detected for rangeline {idx_n}.")
+            #print(f"No targets detected for rangeline {idx_n}.")
             continue  
         else: 
             dbscan = DBSCAN(eps=20, min_samples=5)
             clusters = dbscan.fit_predict(time_freq_data)
 
             num_clusters = len(np.unique(clusters[clusters != -1]))
-            print(f"Number of clusters for rangeline {idx_n}: {num_clusters}")
+            #print(f"Number of clusters for rangeline {idx_n}: {num_clusters}")
 
             # ------------------ Skip Feature Extraction if More Than 2 Clusters -------------------
             if (num_clusters > 2 or num_clusters == 0):
-                print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
+                #print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
                 continue
 
             # ------------------ Assign Global Pulse Numbers and Adjusted Times -------------------
@@ -186,53 +201,54 @@ for selected_burst in all_bursts:
                     })
                     global_pulse_number += 1  
 
-            # ------------------ Process I/Q Data -------------------
-            NFFT = 256
-            noverlap = 200
-            sampling_rate = fs
-            time_step = (NFFT - noverlap) / sampling_rate
-            isolated_pulses_data = {}
+            # # ------------------ Process I/Q Data -------------------
+            # NFFT = 256
+            # noverlap = 200
+            # sampling_rate = fs
+            # time_step = (NFFT - noverlap) / sampling_rate
+            # isolated_pulses_data = {}
 
-            cluster_time_indices = {}
-            for (rangeline_idx, cluster_id), params_list in global_cluster_params.items():
-                for params in params_list:
-                    start_time_idx = params['start_time_index']
-                    end_time_idx = params['end_time_index']
-                    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-                    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+            # cluster_time_indices = {}
+            # for (rangeline_idx, cluster_id), params_list in global_cluster_params.items():
+            #     for params in params_list:
+            #         start_time_idx = params['start_time_index']
+            #         end_time_idx = params['end_time_index']
+            #         iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
+            #         iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
                     
-                    pulse_number = params['pulse_number']
-                    if pulse_number not in cluster_time_indices:
-                        cluster_time_indices[pulse_number] = []
-                    cluster_time_indices[pulse_number].append((rangeline_idx, cluster_id, iq_start_idx, iq_end_idx))
+            #         pulse_number = params['pulse_number']
+            #         if pulse_number not in cluster_time_indices:
+            #             cluster_time_indices[pulse_number] = []
+            #         cluster_time_indices[pulse_number].append((rangeline_idx, cluster_id, iq_start_idx, iq_end_idx))
 
-            for pulse_number in cluster_time_indices:
-                isolated_pulses_data[pulse_number] = []
+            # for pulse_number in cluster_time_indices:
+            #     isolated_pulses_data[pulse_number] = []
 
-            for idx in range(len(radar_section)):
-                for pulse_number, clusters in cluster_time_indices.items():
-                    for (rangeline_idx, cluster_id, iq_start_idx, iq_end_idx) in clusters:
-                        if iq_start_idx <= idx <= iq_end_idx:
-                            if len(isolated_pulses_data[pulse_number]) <= idx:
-                                isolated_pulses_data[pulse_number].extend([0] * (idx - len(isolated_pulses_data[pulse_number]) + 1))
-                            isolated_pulses_data[pulse_number][idx] = radar_section[idx]
-                            break  
-
-            
-            for pulse_number in isolated_pulses_data:
-                isolated_pulses_data[pulse_number] = np.array(isolated_pulses_data[pulse_number], dtype=complex)
+            # for idx in range(len(radar_section)):
+            #     for pulse_number, clusters in cluster_time_indices.items():
+            #         for (rangeline_idx, cluster_id, iq_start_idx, iq_end_idx) in clusters:
+            #             if iq_start_idx <= idx <= iq_end_idx:
+            #                 if len(isolated_pulses_data[pulse_number]) <= idx:
+            #                     isolated_pulses_data[pulse_number].extend([0] * (idx - len(isolated_pulses_data[pulse_number]) + 1))
+            #                 isolated_pulses_data[pulse_number][idx] = radar_section[idx]
+            #                 break  
 
             
-            for pulse_number, data in isolated_pulses_data.items():
-                if pulse_number not in global_isolated_pulses_data:
-                    global_isolated_pulses_data[pulse_number] = []
-                global_isolated_pulses_data[pulse_number].append(data) 
+            # for pulse_number in isolated_pulses_data:
+            #     isolated_pulses_data[pulse_number] = np.array(isolated_pulses_data[pulse_number], dtype=complex)
+
+            
+            # for pulse_number, data in isolated_pulses_data.items():
+            #     if pulse_number not in global_isolated_pulses_data:
+            #         global_isolated_pulses_data[pulse_number] = []
+            #     global_isolated_pulses_data[pulse_number].append(data) 
 
 
 
 # ------------------ Database Storage -------------------
-db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
-db_name = "pulse_characteristics_Mipur.db"
+# db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
+db_name = "pulse_characteristics_Whitesands.db"
 db_path = os.path.join(db_folder, db_name)
 
 # Create folder if it doesn't exist
@@ -349,21 +365,21 @@ with conn:
     # Commit the changes to the database
     conn.commit()
 
-    # -------------------- Insertion of I/Q Data --------------------
-    for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
-        if len(iq_data_segments) == 0:
-            print(f"Warning: No I/Q data for pulse number {pulse_number}")
-            continue  # Skip this pulse if no data
+    # # -------------------- Insertion of I/Q Data --------------------
+    # for pulse_number, iq_data_segments in global_isolated_pulses_data.items():
+    #     if len(iq_data_segments) == 0:
+    #         print(f"Warning: No I/Q data for pulse number {pulse_number}")
+    #         continue  # Skip this pulse if no data
 
-        for segment in iq_data_segments:
-            # Serialize the complex I/Q data to binary format (no need for string conversion)
-            iq_data_blob = segment.tobytes()
+    #     for segment in iq_data_segments:
+    #         # Serialize the complex I/Q data to binary format (no need for string conversion)
+    #         iq_data_blob = segment.tobytes()
 
-            # Insert the I/Q data as binary (BLOB) into the database
-            cursor.execute(
-                """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
-                (pulse_number, iq_data_blob)
-            )
+    #         # Insert the I/Q data as binary (BLOB) into the database
+    #         cursor.execute(
+    #             """INSERT OR REPLACE INTO iq_data (pulse_number, iq_data) VALUES (?, ?)""",
+    #             (pulse_number, iq_data_blob)
+    #         )
             
 conn.close()
 print(f"Pulse characteristics and I/Q data stored in SQLite3 database at {db_path}.")
