@@ -30,8 +30,11 @@ import sentinel1decoder
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
-filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+
+filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
+filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
 
 inputfile = filepath + filename
 
@@ -41,7 +44,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 57
+selected_burst = 59
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -62,7 +65,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 935
+idx_n = 558
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -168,19 +171,55 @@ gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
 # Define a mask for forward-slash gradients
 forward_slash_mask = (
-    (gradient_x > 0.1) &  # Horizontal gradient must be significant
-    (gradient_y < 0.1) &  # Vertical gradient should be small
-    (gradient_magnitude > np.percentile(gradient_magnitude, 90))  # High gradient magnitude
+    (gradient_x > 0.05) &  # Horizontal gradient must be significant
+    (gradient_y < 0.2) &  # Vertical gradient should be small
+    (gradient_magnitude > np.percentile(gradient_magnitude, 75))  # High gradient magnitude
 )
 
-# Use binary dilation to expand the mask and allow for thicker lines
-dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3)))  # 3x3 kernel for small line widths
+    
+# Plot the original forward_slash_mask
+plt.figure(figsize=(12, 5))
 
-# Apply the mask to the spectrogram to extract candidates
+# Plot original forward slash mask
+plt.subplot(1, 2, 1)
+plt.imshow(forward_slash_mask, cmap='gray', origin='lower')  # origin='lower' to align it properly
+plt.title("Original Forward Slash Mask")
+plt.colorbar(label="Mask Value (True/False)")
+
+# Apply binary dilation and plot the result
+dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
+
+# Plot dilated mask
+plt.subplot(1, 2, 2)
+plt.imshow(dilated_mask, cmap='gray', origin='lower')  # origin='lower' to align it properly
+plt.title("Dilated Forward Slash Mask")
+plt.colorbar(label="Mask Value (True/False)")
+
+plt.show()
+# Step 1: Plot the original spectrogram
+fig, ax = plt.subplots(1, 2, figsize=(14, 6))
+
+# Plot the original spectrogram (before mask is applied)
+ax[0].imshow(aa_filtered_clean, aspect='auto', cmap='gray', origin='lower')
+ax[0].set_title("Original Spectrogram (Before Mask)")
+ax[0].set_xlabel("Time (samples)")
+ax[0].set_ylabel("Frequency (Hz)")
+
+# Step 2: Apply the mask to the spectrogram and plot
 chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
 
+# Plot the chirp candidates (after applying the mask)
+ax[1].imshow(chirp_candidates, aspect='auto', cmap='jet', origin='lower')
+ax[1].set_title("Spectrogram with Chirp Candidates")
+ax[1].set_xlabel("Time (samples)")
+ax[1].set_ylabel("Frequency (Hz)")
+
+# Show the plots
+plt.tight_layout()
+plt.show()
+
 # Threshold for minimum line length (in pixels, accounting for angles)
-min_length = 20
+min_length = 10
 
 # Label connected components in the dilated mask
 labeled_mask, num_features = label(dilated_mask)

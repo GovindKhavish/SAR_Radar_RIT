@@ -24,6 +24,18 @@ def load_pulse_data_from_db(db_path):
     conn.close()
     return df
 
+def count_rows_in_database(db_path):
+    """
+    Count the number of rows in the pulse_data table.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM pulse_data")
+    row_count = cursor.fetchone()[0]
+    conn.close()
+    return row_count
+
+
 # --------------------- Display Database ---------------------
 def display_database_in_window(db_path):
     """

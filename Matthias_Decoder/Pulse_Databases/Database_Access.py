@@ -11,7 +11,8 @@ import Database_Functions  # Custom module for database handling and plotting
 
 #----------------------------------------------------------------------------------------#
 # Path to the database
-db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
+db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
+# db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
 db_name = "pulse_characteristics_Mipur.db"
 db_path = f"{db_folder}/{db_name}"
 
@@ -22,6 +23,8 @@ pulse_data = Database_Functions.load_pulse_data_from_db(db_path)
 Database_Functions.display_database_in_window(db_path)
 
 # Plot the pulse characteristics
+rows = Database_Functions.count_rows_in_database(db_path)
+print(rows)
 Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
 Database_Functions.plot_duration_vs_pulse_number(pulse_data)
 Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)

@@ -9,7 +9,7 @@ import polars as pl
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from scipy.signal import spectrogram
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, label, find_objects
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
@@ -28,14 +28,21 @@ import sentinel1decoder
 
 # Mipur VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
+
+filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
+filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+
 
 inputfile = filepath + filename
 
@@ -45,7 +52,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 57
+selected_burst = 59
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -122,22 +129,40 @@ for idx_n in range(start_idx, end_idx + 1):
     aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
     # ------------------- Shape Detection ---------------------
-    aa_filtered_clean = aa_db_filtered
+    aa_filtered_clean = aa_db_filtered  
 
-    gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
-    gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
+    gradient_x = np.gradient(aa_filtered_clean, axis=1)
+    gradient_y = np.gradient(aa_filtered_clean, axis=0)
     gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-    forward_slash_mask = (gradient_x > 0.1) & (gradient_y < 0.1) & (gradient_magnitude > np.percentile(gradient_magnitude, 90))
+    forward_slash_mask = (
+        (gradient_x > 0.05) &  
+        (gradient_y < 0.2) & 
+        (gradient_magnitude > np.percentile(gradient_magnitude, 90)))
 
-    # Use binary dilation for thicker lines
-    dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((3, 3))) 
+    dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
 
-    # Apply the mask to the spectrogram to extract candidates
     chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
+    min_length = 10
+    labeled_mask, num_features = label(dilated_mask)
+    slices = find_objects(labeled_mask)
+    filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
+
+    for i, slice_obj in enumerate(slices, start=1):
+        component = (labeled_mask[slice_obj] == i)
+        y_coords, x_coords = np.where(component)
+            
+        if len(x_coords) > 0 and len(y_coords) > 0:
+            length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
+                
+            if length >= min_length:
+                filtered_mask[slice_obj][component] = True
+
+    length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
 
     # ------------------ Detect Chirp Candidates ------------------
-    time_freq_data = np.column_stack(np.where(chirp_candidates > 0))
+    time_freq_data = np.column_stack(np.where(length_filtered_candidates> 0))
+    frequency_indices = bb[time_freq_data[:, 0]]
 
     if time_freq_data.shape[0] == 0:
         continue  # No data points, skip this range line
@@ -146,9 +171,6 @@ for idx_n in range(start_idx, end_idx + 1):
     dbscan = DBSCAN(eps=20, min_samples=5)
     clusters = dbscan.fit_predict(time_freq_data)
     num_clusters = len(np.unique(clusters[clusters != -1]))
-    print("----")
-    print(num_clusters)
-    print(idx_n)
 
     # Skip feature extraction if no valid clusters
     if num_clusters > 2 or num_clusters == 0:

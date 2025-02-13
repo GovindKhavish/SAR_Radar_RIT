@@ -54,6 +54,8 @@ bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
 global_pulse_number = 1
+global_cluster_params = {}
+global_isolated_pulses_data = {}
 
 echo_bursts = l0file.burst_info[l0file.burst_info['Signal Type'] == 0]
 burst_array = np.array(echo_bursts['Burst'])
@@ -73,9 +75,6 @@ for selected_burst in burst_array:
     start_idx = 0
     end_idx = radar_data.shape[0] - 1 
     fs = 46918402.800000004  
-
-    global_cluster_params = {}
-    global_isolated_pulses_data = {}
 
     for idx_n in range(start_idx, end_idx + 1):
         radar_section = radar_data[idx_n, :]
