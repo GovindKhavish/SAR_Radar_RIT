@@ -27,14 +27,17 @@ import sentinel1decoder
 
 # Mipur VH Filepath
 #filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-# filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
-filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
-filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+# filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 inputfile = filepath + filename
 
@@ -44,7 +47,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 59
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -65,7 +68,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 558
+idx_n = 1470
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -135,7 +138,6 @@ padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
 # plt.colorbar(label='Filter Amplitude')
 
 alpha = Spectogram_FunctionsV3.set_alpha(Spectogram_FunctionsV3.get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
-print("Threshold Value: ",alpha)
 
 # thres_map = cfar_method(aa,cfar_mask,alpha)
 thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
@@ -169,12 +171,50 @@ gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
 gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
 gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-# Define a mask for forward-slash gradients
-forward_slash_mask = (
-    (gradient_x > 0.05) &  # Horizontal gradient must be significant
-    (gradient_y < 0.2) &  # Vertical gradient should be small
-    (gradient_magnitude > np.percentile(gradient_magnitude, 75))  # High gradient magnitude
+
+plt.figure(figsize=(12, 4))
+
+plt.subplot(1, 3, 1)
+plt.title("Gradient X")
+plt.imshow(gradient_x, cmap='coolwarm')
+plt.colorbar()
+
+plt.subplot(1, 3, 2)
+plt.title("Gradient Y")
+plt.imshow(gradient_y, cmap='coolwarm')
+plt.colorbar()
+
+plt.subplot(1, 3, 3)
+plt.title("Gradient Magnitude")
+plt.imshow(gradient_magnitude, cmap='hot')
+plt.colorbar()
+
+plt.tight_layout()
+plt.show()
+
+# Define a mask forslash gradients
+slash_mask = (
+    ((gradient_x > 0.05) & (gradient_y < -0.05))  # Forward slash `/`
+    |  
+    ((gradient_x > 0.05) & (gradient_y > 0.05))   # Backslash `\`
 )
+# Apply gradient magnitude threshold
+slash_mask = slash_mask & (gradient_magnitude > np.percentile(gradient_magnitude, 70))
+
+# Convert mask to float for better visualization (optional)
+visual_mask = slash_mask.astype(float)
+
+plt.figure(figsize=(6, 6))
+plt.imshow(visual_mask, cmap="gray", interpolation="nearest")
+plt.title("Slash Mask (Forward `/` and Backslash `\\`)")
+plt.axis("off")  # Hide axis labels for a clean look
+plt.show()
+
+plt.figure(figsize=(6, 6))
+plt.imshow(slash_mask.astype(float), cmap="gray", interpolation="nearest")
+plt.title("Slash Mask (Forward `/` and Backslash `\\`)")
+plt.axis("off")
+plt.show()
 
     
 # Plot the original forward_slash_mask
@@ -182,12 +222,12 @@ plt.figure(figsize=(12, 5))
 
 # Plot original forward slash mask
 plt.subplot(1, 2, 1)
-plt.imshow(forward_slash_mask, cmap='gray', origin='lower')  # origin='lower' to align it properly
+plt.imshow(slash_mask, cmap='gray', origin='lower')  # origin='lower' to align it properly
 plt.title("Original Forward Slash Mask")
 plt.colorbar(label="Mask Value (True/False)")
 
 # Apply binary dilation and plot the result
-dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
+dilated_mask = binary_dilation(slash_mask, structure=np.ones((6, 6)))
 
 # Plot dilated mask
 plt.subplot(1, 2, 2)
@@ -244,6 +284,33 @@ for i, slice_obj in enumerate(slices, start=1):
 
 # Apply the filtered mask to extract candidates that meet the length criterion
 length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
+
+import matplotlib.patches as patches
+
+# Create figure
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.imshow(filtered_mask.astype(float), cmap="gray", interpolation="nearest")
+ax.set_title("Filtered Mask with Bounding Boxes")
+
+# Plot bounding boxes and labels
+for i, slice_obj in enumerate(slices, start=1):
+    y_start, y_end = slice_obj[0].start, slice_obj[0].stop
+    x_start, x_end = slice_obj[1].start, slice_obj[1].stop
+
+    # Draw rectangle
+    rect = patches.Rectangle(
+        (x_start, y_start),  # Bottom-left corner
+        x_end - x_start,     # Width
+        y_end - y_start,     # Height
+        linewidth=1.5, edgecolor="red", facecolor="none"
+    )
+    ax.add_patch(rect)
+
+    # Add label at top-left corner of the bounding box
+    ax.text(x_start, y_start - 2, str(i), color="yellow", fontsize=8, fontweight="bold")
+
+plt.axis("off")  # Hide axis labels
+plt.show()
 
 # Visualize the chirp candidates after applying gradient and dilation
 plt.figure(figsize=(10, 5))

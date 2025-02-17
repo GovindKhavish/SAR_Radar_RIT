@@ -40,8 +40,8 @@ import sentinel1decoder
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
-filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
-filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
+filename = '/s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 
 inputfile = filepath + filename
@@ -52,7 +52,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 59
+selected_burst = 11
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -74,7 +74,7 @@ plt.show()
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 200
+start_idx = 0
 end_idx = 1400
 fs = 46918402.800000004  
 
@@ -135,12 +135,16 @@ for idx_n in range(start_idx, end_idx + 1):
     gradient_y = np.gradient(aa_filtered_clean, axis=0)
     gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-    forward_slash_mask = (
-        (gradient_x > 0.05) &  
-        (gradient_y < 0.2) & 
-        (gradient_magnitude > np.percentile(gradient_magnitude, 90)))
+   # Define a mask forslash gradients
+    slash_mask = (
+        ((gradient_x > 0.05) & (gradient_y < -0.05))  # Forward slash `/`
+        |  
+        ((gradient_x > 0.05) & (gradient_y > 0.05))   # Backslash `\`
+    )
+    # Apply gradient magnitude threshold
+    slash_mask = slash_mask & (gradient_magnitude > np.percentile(gradient_magnitude, 70))
 
-    dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
+    dilated_mask = binary_dilation(slash_mask, structure=np.ones((6, 6)))
 
     chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
     min_length = 10
