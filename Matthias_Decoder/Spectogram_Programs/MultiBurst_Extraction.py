@@ -35,15 +35,20 @@ import sentinel1decoder
 # filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # Damascus VH Filepath
-#.m filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
-# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
-#filename = '\s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
-
-# Damascus VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\WhiteSand_USA\2021_12_14\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE"
-filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
+# # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+# filename = '\s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
+# Whitesands VH Filepath
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\WhiteSand_USA\2021_12_14\S1A_IW_RAW__0SDV_20211214T130351_20211214T130423_041005_04DEF2_011D.SAFE"
+# filename = '\s1a-iw-raw-s-vh-20211214t130351-20211214t130423-041005-04def2.dat'
+
+# Israel VH Filepath
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Nazareth_Isreal\S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
+# filename = '\s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
+filename = '\s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 inputfile = filepath + filename
 
@@ -120,9 +125,9 @@ for selected_burst in burst_array:
         gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
         forward_slash_mask = (
-            (gradient_x > 0.1) &  
-            (gradient_y < 0.1) & 
-            (gradient_magnitude > np.percentile(gradient_magnitude, 90)))
+            (gradient_x > 0.05) &  
+            (gradient_y < 0.2) & 
+            (gradient_magnitude > np.percentile(gradient_magnitude, 70)))
 
         dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
 
@@ -247,7 +252,7 @@ for selected_burst in burst_array:
 # ------------------ Database Storage -------------------
 # db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
 db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
-db_name = "pulse_characteristics_Whitesands.db"
+db_name = "pulse_characteristics_NorthernSea.db"
 db_path = os.path.join(db_folder, db_name)
 
 # Create folder if it doesn't exist

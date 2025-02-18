@@ -12,8 +12,8 @@ import Database_Functions  # Custom module for database handling and plotting
 #----------------------------------------------------------------------------------------#
 # Path to the database
 db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
-# db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
-db_name = "pulse_characteristics_Mipur.db"
+# db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
+db_name = "pulse_characteristics_WhiteSands.db"
 db_path = f"{db_folder}/{db_name}"
 
 # Load pulse data
