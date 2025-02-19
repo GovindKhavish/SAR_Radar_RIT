@@ -66,9 +66,36 @@ plt.ylabel('Slow Time')
 plt.title('Original Data')
 plt.show()
 
+# Extract radar data for row 1200
+row_idx = 1200
+iq_data = radar_data[row_idx, :]
+
+# Print the IQ data for row 1200
+print("IQ Data for Row 1200:")
+print(iq_data)
+plt.figure(figsize=(10, 6))
+
+# Plot the real part (In-phase)
+plt.subplot(2, 1, 1)
+plt.plot(iq_data.real)
+plt.title('Real Part (In-phase) of IQ Data')
+plt.xlabel('Sample Index')
+plt.ylabel('Amplitude')
+
+# Plot the imaginary part (Quadrature)
+plt.subplot(2, 1, 2)
+plt.plot(iq_data.imag)
+plt.title('Imaginary Part (Quadrature) of IQ Data')
+plt.xlabel('Sample Index')
+plt.ylabel('Amplitude')
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1470
+idx_n = 1200
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -83,6 +110,30 @@ ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Your radar data and fs are already defined
+radar_section = radar_data[idx_n, :]
+
+# Compute the FFT of the signal
+fft_signal = np.fft.fft(radar_section)
+fft_freqs = np.fft.fftfreq(len(radar_section), d=1/fs)
+
+# Only keep the positive frequencies
+positive_freqs = fft_freqs[:len(fft_freqs)//2]
+positive_fft_signal = np.abs(fft_signal[:len(fft_signal)//2])
+
+# Plot the FFT frequency components
+plt.figure(figsize=(6, 4))
+plt.plot(positive_freqs / 1e6, 10 * np.log10(positive_fft_signal), color='black')  # Convert to dB scale
+plt.xlabel('Frequency [MHz]', fontweight='bold')
+plt.ylabel('Magnitude [dB]', fontweight='bold')
+plt.title(f'Frequency Spectrum from rangeline {idx_n}', fontweight='bold')
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
@@ -94,16 +145,34 @@ def adaptive_threshold(array, factor=2):
 
 threshold,aa = adaptive_threshold(aa)
 
+# Plot the filtered spectrogram with the adaptive threshold applied
 fig = plt.figure(figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
-dd = ax.imshow(10 * np.log10(aa), aspect='auto', origin='lower', cmap='Greys')
+
+# Get the number of frequency bins (corresponding to the y-axis)
+num_freq_bins = aa.shape[0]
+
+# Frequency axis from 0 Hz to Nyquist (half the sampling frequency)
+freq_axis = np.linspace(0, fs / 2, num_freq_bins) / 1e6  # Convert to MHz
+
+# Plot the thresholded spectrogram using imshow with the correct axis scaling
+dd = ax.imshow(10 * np.log10(aa), aspect='auto', origin='lower', cmap='Greys', extent=[0, radar_data.shape[1] / fs * 1e6, 0, fs / 2 / 1e6])
+
+# Add the colorbar
 cbar = plt.colorbar(dd, ax=ax)
 cbar.set_label('Intensity [dB]')
+
+# Set axis labels and title
 ax.set_xlabel('Time [us]', fontweight='bold')
 ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Filtered Spectrogram (Threshold: {round(10*np.log10(threshold),2)} dB)', fontweight='bold')
+ax.set_title(f'Filtered Spectrogram (Threshold: {round(10 * np.log10(threshold), 2)} dB)', fontweight='bold')
+
+# Adjust the layout and show the plot
 plt.tight_layout()
 plt.show()
+
+
+
 
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
