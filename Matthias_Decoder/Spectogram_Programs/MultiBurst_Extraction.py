@@ -47,8 +47,13 @@ import sentinel1decoder
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Nazareth_Isreal\S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
 # filename = '\s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
 
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
-filename = '\s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
+# Northern Sea Ireland VH Filepath
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\NorthernSea_Ireland\S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
+# filename = '\s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
+
+# Augsberg VH Filepath
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Augsburg_Germany\S1A_IW_RAW__0SDV_20190219T033540_20190219T033612_025993_02E57A_771F.SAFE"
+filename = '\s1a-iw-raw-s-vh-20190219t033540-20190219t033612-025993-02e57a.dat'
 
 inputfile = filepath + filename
 
@@ -124,12 +129,14 @@ for selected_burst in burst_array:
         gradient_y = np.gradient(aa_filtered_clean, axis=0)
         gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-        forward_slash_mask = (
-            (gradient_x > 0.05) &  
-            (gradient_y < 0.2) & 
-            (gradient_magnitude > np.percentile(gradient_magnitude, 70)))
+        # Define a mask for slash gradients
+        slash_mask = (
+            ((gradient_x > 0.05) & (gradient_y < -0.05))  # Forward slash
+            |  
+            ((gradient_x > 0.05) & (gradient_y > 0.05))   # Backslash
+        )
 
-        dilated_mask = binary_dilation(forward_slash_mask, structure=np.ones((6, 6)))
+        dilated_mask = binary_dilation(slash_mask, structure=np.ones((6, 6)))
 
         chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
         min_length = 10
@@ -252,7 +259,7 @@ for selected_burst in burst_array:
 # ------------------ Database Storage -------------------
 # db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
 db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
-db_name = "pulse_characteristics_NorthernSea.db"
+db_name = "pulse_characteristics_Augsberg.db"
 db_path = os.path.join(db_folder, db_name)
 
 # Create folder if it doesn't exist

@@ -135,7 +135,7 @@ for idx_n in range(start_idx, end_idx + 1):
     gradient_y = np.gradient(aa_filtered_clean, axis=0)
     gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-   # Define a mask forslash gradients
+   # Define a mask for slash gradients
     slash_mask = (
         ((gradient_x > 0.05) & (gradient_y < -0.05))  # Forward slash `/`
         |  

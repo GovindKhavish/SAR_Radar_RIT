@@ -1,6 +1,5 @@
 #=========================================================================================
 # _common_imports_v3_py.py ]
-#
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals # v3line15
 
@@ -10,15 +9,6 @@ import matplotlib.pyplot as plt
 import sys
 from pathlib import Path
 #-----------------------------------------------------------------------------------------
-
-_simraddir = Path(r'/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Basic_Programs/sentinel1decoder')
-
-if _simraddir.exists():
-    sys.path.insert(0, str(_simraddir.resolve()))
-    print("Using the right Sentinel Library")
-else:
-    print(f"Directory {_simraddir} does not exist.")
-    sys.exit(1)
 
 import sentinel1decoder
 
@@ -70,9 +60,29 @@ data = {
             "filename": '/s1a-iw-raw-s-vv-20190224t034343-20190224t034416-026066-02e816.dat',
         },
     },
+    "Beruit": {
+        "VH": {
+            "filepath": r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Beirut_Lebanon\S1A_IW_RAW__0SDV_20241006T154123_20241006T154155_055984_06D89C_05A2.SAFE",
+            "filename": '\s1a-iw-raw-s-vh-20241006t154123-20241006t154155-055984-06d89c.dat',
+        },
+        "VV": {
+            "filepath": r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Beirut_Lebanon\S1A_IW_RAW__0SDV_20241006T154123_20241006T154155_055984_06D89C_05A2.SAFE",
+            "filename": '\s1a-iw-raw-s-vv-20241006t154123-20241006t154155-055984-06d89c.dat',
+        },
+    },
+    "Augsberg": {
+        "VH": {
+            "filepath": r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Augsburg_Germany\S1A_IW_RAW__0SDV_20190219T033540_20190219T033612_025993_02E57A_771F.SAFE",
+            "filename": '\s1a-iw-raw-s-vh-20190219t033540-20190219t033612-025993-02e57a.dat',
+        },
+        "VV": {
+            "filepath": r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Augsburg_Germany\S1A_IW_RAW__0SDV_20190219T033540_20190219T033612_025993_02E57A_771F.SAFE",
+            "filename": '\s1a-iw-raw-s-vv-20190219t033540-20190219t033612-025993-02e57a.dat',
+        },
+    },
 }
 
-print("Select a location: Mipur, Damascus, Rostov, Guam, Nazareth")
+print("Select a location: Mipur, Damascus, Rostov, Guam, Nazareth, Beruit,Augsberg")
 location = input("Enter location: ").strip()
 print("Select polarization: VH or VV")
 polarization = input("Enter polarization: ").strip().upper()
@@ -96,7 +106,7 @@ l0file = sentinel1decoder.Level0File(inputfile)
 total_bursts = len(l0file.burst_info) 
 valid_burst_numbers = []
 
-for burst_number in range(63, total_bursts + 1):
+for burst_number in range(51, total_bursts + 1):
     metadata = l0file.get_burst_metadata(burst_number)
     if metadata['Signal Type'].unique()[0] == 0:
         valid_burst_numbers.append(burst_number)
@@ -114,6 +124,5 @@ for burst_num in valid_burst_numbers:
     plt.ylabel('Slow Time')
     plt.title(f'Burst {burst_num} Data')
     plt.show()
-
     plt.clf() 
     plt.close()
