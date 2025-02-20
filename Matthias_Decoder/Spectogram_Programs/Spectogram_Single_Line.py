@@ -110,30 +110,6 @@ ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Your radar data and fs are already defined
-radar_section = radar_data[idx_n, :]
-
-# Compute the FFT of the signal
-fft_signal = np.fft.fft(radar_section)
-fft_freqs = np.fft.fftfreq(len(radar_section), d=1/fs)
-
-# Only keep the positive frequencies
-positive_freqs = fft_freqs[:len(fft_freqs)//2]
-positive_fft_signal = np.abs(fft_signal[:len(fft_signal)//2])
-
-# Plot the FFT frequency components
-plt.figure(figsize=(6, 4))
-plt.plot(positive_freqs / 1e6, 10 * np.log10(positive_fft_signal), color='black')  # Convert to dB scale
-plt.xlabel('Frequency [MHz]', fontweight='bold')
-plt.ylabel('Magnitude [dB]', fontweight='bold')
-plt.title(f'Frequency Spectrum from rangeline {idx_n}', fontweight='bold')
-plt.grid(True)
-plt.tight_layout()
-plt.show()
-
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
