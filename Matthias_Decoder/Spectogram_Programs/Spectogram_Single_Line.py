@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import spectrogram
 from scipy.ndimage import binary_dilation, label, find_objects
 from sklearn.cluster import DBSCAN
+import matplotlib.patches as patches
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path
@@ -66,38 +67,20 @@ plt.ylabel('Slow Time')
 plt.title('Original Data')
 plt.show()
 
-# Extract radar data for row 1200
-row_idx = 1200
-iq_data = radar_data[row_idx, :]
-
-# Print the IQ data for row 1200
-print("IQ Data for Row 1200:")
-print(iq_data)
-plt.figure(figsize=(10, 6))
-
-# Plot the real part (In-phase)
-plt.subplot(2, 1, 1)
-plt.plot(iq_data.real)
-plt.title('Real Part (In-phase) of IQ Data')
-plt.xlabel('Sample Index')
-plt.ylabel('Amplitude')
-
-# Plot the imaginary part (Quadrature)
-plt.subplot(2, 1, 2)
-plt.plot(iq_data.imag)
-plt.title('Imaginary Part (Quadrature) of IQ Data')
-plt.xlabel('Sample Index')
-plt.ylabel('Amplitude')
-
-# Show the plot
-plt.tight_layout()
-plt.show()
-
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
 idx_n = 1200
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
+
+plt.figure(figsize=(14, 6))
+plt.plot(np.abs(radar_section), color='b', linewidth=1.5)
+plt.xlabel('Sample Index', fontweight='bold')
+plt.ylabel('Magnitude', fontweight='bold')
+plt.title(f'Absolute Value of IQ Data for Row {idx_n}', fontweight='bold')
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
@@ -122,33 +105,14 @@ def adaptive_threshold(array, factor=2):
 threshold,aa = adaptive_threshold(aa)
 
 # Plot the filtered spectrogram with the adaptive threshold applied
-fig = plt.figure(figsize=(6, 6), clear=True)
-ax = fig.add_subplot(111)
-
-# Get the number of frequency bins (corresponding to the y-axis)
-num_freq_bins = aa.shape[0]
-
-# Frequency axis from 0 Hz to Nyquist (half the sampling frequency)
-freq_axis = np.linspace(0, fs / 2, num_freq_bins) / 1e6  # Convert to MHz
-
-# Plot the thresholded spectrogram using imshow with the correct axis scaling
-dd = ax.imshow(10 * np.log10(aa), aspect='auto', origin='lower', cmap='Greys', extent=[0, radar_data.shape[1] / fs * 1e6, 0, fs / 2 / 1e6])
-
-# Add the colorbar
-cbar = plt.colorbar(dd, ax=ax)
-cbar.set_label('Intensity [dB]')
-
-# Set axis labels and title
-ax.set_xlabel('Time [us]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Filtered Spectrogram (Threshold: {round(10 * np.log10(threshold), 2)} dB)', fontweight='bold')
-
-# Adjust the layout and show the plot
+plt.figure(figsize=(10, 5))
+plt.imshow(np.flipud(aa), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]]) 
+plt.title('Filtered Spectrograms')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 plt.show()
-
-
-
 
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
@@ -216,45 +180,31 @@ gradient_x = np.gradient(aa_filtered_clean, axis=1)  # Time (horizontal axis)
 gradient_y = np.gradient(aa_filtered_clean, axis=0)  # Frequency (vertical axis)
 gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
-
 plt.figure(figsize=(12, 4))
-
 plt.subplot(1, 3, 1)
 plt.title("Gradient X")
 plt.imshow(gradient_x, cmap='coolwarm')
 plt.colorbar()
-
 plt.subplot(1, 3, 2)
 plt.title("Gradient Y")
 plt.imshow(gradient_y, cmap='coolwarm')
 plt.colorbar()
-
 plt.subplot(1, 3, 3)
 plt.title("Gradient Magnitude")
 plt.imshow(gradient_magnitude, cmap='hot')
 plt.colorbar()
-
 plt.tight_layout()
 plt.show()
 
-# Define a mask forslash gradients
-slash_mask = (
-    ((gradient_x > 0.05) & (gradient_y < -0.05))  # Forward slash `/`
-    |  
-    ((gradient_x > 0.05) & (gradient_y > 0.05))   # Backslash `\`
-)
-# Apply gradient magnitude threshold
+slash_mask = (((gradient_x > 0.05) & (gradient_y < -0.05)) |  ((gradient_x > 0.05) & (gradient_y > 0.05)))
 slash_mask = slash_mask & (gradient_magnitude > np.percentile(gradient_magnitude, 70))
 
-# Convert mask to float for better visualization (optional)
 visual_mask = slash_mask.astype(float)
-
 plt.figure(figsize=(6, 6))
 plt.imshow(visual_mask, cmap="gray", interpolation="nearest")
 plt.title("Slash Mask (Forward `/` and Backslash `\\`)")
 plt.axis("off")  # Hide axis labels for a clean look
 plt.show()
-
 plt.figure(figsize=(6, 6))
 plt.imshow(slash_mask.astype(float), cmap="gray", interpolation="nearest")
 plt.title("Slash Mask (Forward `/` and Backslash `\\`)")
@@ -262,75 +212,53 @@ plt.axis("off")
 plt.show()
 
     
-# Plot the original forward_slash_mask
 plt.figure(figsize=(12, 5))
-
-# Plot original forward slash mask
 plt.subplot(1, 2, 1)
-plt.imshow(slash_mask, cmap='gray', origin='lower')  # origin='lower' to align it properly
+plt.imshow(slash_mask, cmap='gray', origin='lower')
 plt.title("Original Forward Slash Mask")
 plt.colorbar(label="Mask Value (True/False)")
 
-# Apply binary dilation and plot the result
 dilated_mask = binary_dilation(slash_mask, structure=np.ones((6, 6)))
 
-# Plot dilated mask
 plt.subplot(1, 2, 2)
-plt.imshow(dilated_mask, cmap='gray', origin='lower')  # origin='lower' to align it properly
+plt.imshow(dilated_mask, cmap='gray', origin='lower')  
 plt.title("Dilated Forward Slash Mask")
 plt.colorbar(label="Mask Value (True/False)")
-
 plt.show()
-# Step 1: Plot the original spectrogram
-fig, ax = plt.subplots(1, 2, figsize=(14, 6))
 
-# Plot the original spectrogram (before mask is applied)
+fig, ax = plt.subplots(1, 2, figsize=(14, 6))
 ax[0].imshow(aa_filtered_clean, aspect='auto', cmap='gray', origin='lower')
 ax[0].set_title("Original Spectrogram (Before Mask)")
 ax[0].set_xlabel("Time (samples)")
 ax[0].set_ylabel("Frequency (Hz)")
 
-# Step 2: Apply the mask to the spectrogram and plot
 chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
 
-# Plot the chirp candidates (after applying the mask)
 ax[1].imshow(chirp_candidates, aspect='auto', cmap='jet', origin='lower')
 ax[1].set_title("Spectrogram with Chirp Candidates")
 ax[1].set_xlabel("Time (samples)")
 ax[1].set_ylabel("Frequency (Hz)")
 
-# Show the plots
 plt.tight_layout()
 plt.show()
 
-# Threshold for minimum line length (in pixels, accounting for angles)
+
 min_length = 10
-
-# Label connected components in the dilated mask
 labeled_mask, num_features = label(dilated_mask)
-
-# Find slices for each labeled component
 slices = find_objects(labeled_mask)
-
-# Create a new mask to include only components with sufficient length
 filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
 
 for i, slice_obj in enumerate(slices, start=1):
     component = (labeled_mask[slice_obj] == i)
     y_coords, x_coords = np.where(component)
     
-    # Measure the bounding box diagonal (approximates major axis length)
     if len(x_coords) > 0 and len(y_coords) > 0:
         length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
         
-        # Include the component if its length is greater than the threshold
         if length >= min_length:
             filtered_mask[slice_obj][component] = True
 
-# Apply the filtered mask to extract candidates that meet the length criterion
 length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
-
-import matplotlib.patches as patches
 
 # Create figure
 fig, ax = plt.subplots(figsize=(6, 6))
@@ -341,23 +269,12 @@ ax.set_title("Filtered Mask with Bounding Boxes")
 for i, slice_obj in enumerate(slices, start=1):
     y_start, y_end = slice_obj[0].start, slice_obj[0].stop
     x_start, x_end = slice_obj[1].start, slice_obj[1].stop
-
-    # Draw rectangle
-    rect = patches.Rectangle(
-        (x_start, y_start),  # Bottom-left corner
-        x_end - x_start,     # Width
-        y_end - y_start,     # Height
-        linewidth=1.5, edgecolor="red", facecolor="none"
-    )
+    rect = patches.Rectangle((x_start, y_start),x_end - x_start, y_end - y_start,linewidth=1.5, edgecolor="red", facecolor="none")
     ax.add_patch(rect)
-
-    # Add label at top-left corner of the bounding box
     ax.text(x_start, y_start - 2, str(i), color="yellow", fontsize=8, fontweight="bold")
-
-plt.axis("off")  # Hide axis labels
+plt.axis("off")  
 plt.show()
 
-# Visualize the chirp candidates after applying gradient and dilation
 plt.figure(figsize=(10, 5))
 plt.imshow(10 * np.log10(chirp_candidates + 1e-10),interpolation='none',aspect='auto',cmap='Greys',origin='lower')
 plt.title('Filtered Chirp Candidates ')
@@ -367,7 +284,6 @@ plt.colorbar(label='Intensity [dB]')
 plt.tight_layout()
 plt.show()
 
-# Visualize the chirp candidates after length filtering
 plt.figure(figsize=(10, 5))
 plt.imshow(10 * np.log10(length_filtered_candidates + 1e-10),interpolation='none',aspect='auto',cmap='Greys',origin='lower')
 plt.title('Filtered Chirp Candidates')
@@ -377,17 +293,17 @@ plt.colorbar(label='Intensity [dB]')
 plt.tight_layout()
 plt.show()
 # ----------------------------------------------------------------------------
-
-# DBSCAN Clustering
-# Extract non-zero points as time-frequency data for clustering
+# Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
 time_freq_data = np.column_stack(np.where(length_filtered_candidates > 0))
+# DBSCAN Clustering
+clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
+# Map the frequency indices to MHz
+frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
+# Map the time indices to microseconds
+time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
 
-# Perform DBSCAN clustering
-clusters = DBSCAN(eps=4, min_samples=10).fit_predict(time_freq_data)
-
-# Visualize Clustering Results
 plt.figure(figsize=(10, 5))
-plt.scatter(time_freq_data[:, 1], time_freq_data[:, 0], c=clusters, cmap='viridis', s=5)
+plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
 plt.title('DBSCAN Clustering of Chirp Signals')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
@@ -395,27 +311,25 @@ plt.colorbar(label='Cluster ID')
 plt.tight_layout()
 plt.show()
 
-#---------
+# Plot the target map (filtered spectrogram)
+plt.figure(figsize=(10, 5))
+plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
+plt.title('Targets')
+plt.xlabel('Time [us]')
+plt.ylabel('Frequency [MHz]')
+plt.colorbar(label='Filter Amplitude')
 
-# Plot threshold
-fig_thresh = plt.figure(13, figsize=(6, 6), clear=True)
-ax_thresh = fig_thresh.add_subplot(111)
-aa_db_filtered = 10 * np.log10(aa_db_filtered  + 1e-10) 
-dd = ax_thresh.imshow(aa_db_filtered, aspect='auto', origin='lower', cmap='Greys')
-
-for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise here
+for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
     cluster_points = time_freq_data[clusters == cluster]
-    ax_thresh.scatter(cluster_points[:, 1], cluster_points[:, 0], label=f'Cluster {i}', s=2)
+    cluster_time_us = cc[cluster_points[:, 1]]  # Time in µs
+    cluster_freq_mhz = bb[cluster_points[:, 0]]  # Frequency in MHz
+    plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
 
-cbar = plt.colorbar(dd, ax=ax_thresh)
-cbar.set_label('Intensity [dB]')
-ax_thresh.set_xlabel('Time [us]', fontweight='bold')
-ax_thresh.set_ylabel('Freq [MHz]', fontweight='bold')
-ax_thresh.set_title(f'Filtered Spectrogram with DBSCAN (Threshold: dB)', fontweight='bold')
-ax_thresh.legend()
+# Show the plot with the target map and cluster points
 plt.tight_layout()
-
-
+plt.legend()
+plt.show(block=True)
+plt.show()
 # Number of clusters (excluding noise)
 num_clusters = len(np.unique(clusters[clusters != -1]))
 print(f"Number of clusters: {num_clusters}")
@@ -450,8 +364,6 @@ for cluster_id in np.unique(clusters):
         
         # 2nd column of the time_freq_data
         time_indices = cluster_points[:, 1]  # us
-        
-
         bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
         center_frequency = np.mean(frequency_indices)
         time_span = np.max(time_indices) - np.min(time_indices)  # us
@@ -473,8 +385,8 @@ for cluster_id, params in cluster_params.items():
     print(f"  Bandwidth: {params['bandwidth']} MHz")
     print(f"  Center Frequency: {params['center_frequency']} MHz")
     print(f"  Chirp Rate: {params['chirp_rate']} MHz/us")
-    print(f"  Start Time Index: {params['start_time_index']}")
-    print(f"  End Time Index: {params['end_time_index']}")
+    print(f"  Start Time Index (us): {params['start_time_index']}")
+    print(f"  End Time Index (us): {params['end_time_index']}")
     print('---------------------------')
 
 # # Numpy Array conversition

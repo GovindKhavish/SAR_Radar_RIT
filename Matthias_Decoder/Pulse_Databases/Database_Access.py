@@ -13,7 +13,7 @@ import Database_Functions  # Custom module for database handling and plotting
 # Path to the database
 db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
 # db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
-db_name = "pulse_characteristics_WhiteSands.db"
+db_name = "pulse_characteristics_Mipur_2.db"
 db_path = f"{db_folder}/{db_name}"
 
 # Load pulse data
@@ -25,10 +25,14 @@ Database_Functions.display_database_in_window(db_path)
 # Plot the pulse characteristics
 rows = Database_Functions.count_rows_in_database(db_path)
 print(rows)
-Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
-Database_Functions.plot_duration_vs_pulse_number(pulse_data)
-Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
-Database_Functions.plot_chirp_rate_vs_pulse_number(pulse_data)
+# Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
+# Database_Functions.plot_duration_vs_pulse_number(pulse_data)
+# Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
+# Database_Functions.plot_chirp_rate_vs_pulse_number(pulse_data)
+
+pdw_results = Database_Functions.pdw_analysis(db_path)
+print(pdw_results)
+
 
 # # If I/Q data visualization or specific pulse retrieval is needed
 # pulse_number = 2

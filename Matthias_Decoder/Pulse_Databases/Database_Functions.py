@@ -15,9 +15,6 @@ from sklearn.cluster import DBSCAN
 #----------------------------------------------------------------------------------------#
 # --------------------- Loading Database ---------------------
 def load_pulse_data_from_db(db_path):
-    """
-    Load pulse data from the SQLite database into a Polars DataFrame.
-    """
     conn = sqlite3.connect(db_path)
     query = "SELECT * FROM pulse_data"
     df = pl.read_database(query, conn)
@@ -25,9 +22,6 @@ def load_pulse_data_from_db(db_path):
     return df
 
 def count_rows_in_database(db_path):
-    """
-    Count the number of rows in the pulse_data table.
-    """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM pulse_data")
@@ -36,11 +30,28 @@ def count_rows_in_database(db_path):
     return row_count
 
 
+# --------------------- PDWs Analysis ---------------------
+def pdw_analysis(db_path):
+    # Connect to the database and load data
+    conn = sqlite3.connect(db_path)
+    query = "SELECT pulse_number, center_frequency, chirp_rate, pulse_duration FROM pulse_data"
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+
+    # Perform PDW grouping using pandas
+    grouped_df = df.groupby(["center_frequency", "chirp_rate"]).agg(
+        pulse_count=("pulse_number", "count"),
+        mean_pulse_duration=("pulse_duration", "mean"),
+        min_pulse_duration=("pulse_duration", "min"),
+        max_pulse_duration=("pulse_duration", "max"),
+    ).reset_index()
+
+    pl_grouped_df = pl.from_pandas(grouped_df)
+
+    return pl_grouped_df
+
 # --------------------- Display Database ---------------------
 def display_database_in_window(db_path):
-    """
-    Display the pulse data in a simple Tkinter window with scrolling.
-    """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -83,9 +94,6 @@ def display_database_in_window(db_path):
 # --------------------- Plotting Functions ---------------------
 # --------------------- I/Q Data Retrieval ---------------------
 def retrieve_iq_data_from_db(pulse_number, db_path):
-    """
-    Retrieve I/Q data for a given pulse number.
-    """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     query = "SELECT iq_data FROM iq_data WHERE pulse_number = ?"
@@ -102,9 +110,6 @@ def retrieve_iq_data_from_db(pulse_number, db_path):
     
 # -------------- Center Frequnecy vs Pulse number ---------------------
 def plot_center_frequency_vs_pulse_number(pulse_data):
-    """
-    Plot center frequency (Hz) against pulse number.
-    """
     plt.figure(figsize=(10, 5))
     plt.plot(pulse_data["pulse_number"], pulse_data["center_frequency"], 'bo-', markersize=5, label="Center Frequency")
     plt.xlabel("Pulse Number")
@@ -116,9 +121,6 @@ def plot_center_frequency_vs_pulse_number(pulse_data):
 
 # -------------- Bandwidth vs Pulse number ---------------------
 def plot_bandwidth_vs_pulse_number(pulse_data):
-    """
-    Plot bandwidth (Hz) against pulse number.
-    """
     plt.figure(figsize=(10, 5))
     plt.plot(pulse_data["pulse_number"], pulse_data["bandwidth"], 'go-', markersize=5, label="Bandwidth")
     plt.xlabel("Pulse Number")
@@ -130,9 +132,6 @@ def plot_bandwidth_vs_pulse_number(pulse_data):
 
 # -------------- Duration vs Pulse number ---------------------
 def plot_duration_vs_pulse_number(pulse_data):
-    """
-    Plot pulse duration (seconds) against pulse number.
-    """
     plt.figure(figsize=(10, 5))
     plt.plot(pulse_data["pulse_number"], pulse_data["pulse_duration"], 'ro-', markersize=5, label="Pulse Duration")
     plt.xlabel("Pulse Number")
@@ -144,9 +143,6 @@ def plot_duration_vs_pulse_number(pulse_data):
 
 # -------------- Chrip Rate vs Pulse number ---------------------
 def plot_chirp_rate_vs_pulse_number(pulse_data):
-    """
-    Plot chirp rate (Hz/s) against pulse number.
-    """
     plt.figure(figsize=(10, 5))
     plt.plot(pulse_data["pulse_number"], pulse_data["chirp_rate"], 'mo-', markersize=5, label="Chirp Rate")
     plt.xlabel("Pulse Number")
@@ -156,6 +152,14 @@ def plot_chirp_rate_vs_pulse_number(pulse_data):
     plt.legend()
     plt.show()
 
+
+
+
+
+
+
+
+                    ### Debugging Functions ###
 # --------------------- Plotting I/Q Data  ---------------------
 def plot_iq_data(iq_data, pulse_number):
     """
