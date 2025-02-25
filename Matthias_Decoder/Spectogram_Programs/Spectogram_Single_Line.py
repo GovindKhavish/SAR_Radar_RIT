@@ -86,13 +86,13 @@ fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
 scale = 'dB'
 aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
-
 ax.set_xlabel('Time [us]', fontweight='bold')
 ax.set_ylabel('Freq [MHz]', fontweight='bold')
 ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 
+print(cc)
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
@@ -339,13 +339,8 @@ cluster_time_indices = {}
 
 for cluster_id in np.unique(clusters):
     if cluster_id != -1:  # Noise
-
-        # Time-freq points for cluster
         cluster_points = time_freq_data[clusters == cluster_id]
-        # Time indices (2nd column)
         time_indices = cluster_points[:, 1]  # Time axis (us)
-        
-        # Start and End time
         start_time_index = np.min(time_indices)
         end_time_index = np.max(time_indices)
 
@@ -354,7 +349,7 @@ for cluster_id in np.unique(clusters):
 for cluster_id, (start, end) in cluster_time_indices.items():
     print(f"Cluster {cluster_id}: Start Time Index = {start}, End Time Index = {end}")
 
-# Extract Cluster Parameters
+# Cluster
 cluster_params = {}
 
 for cluster_id in np.unique(clusters):

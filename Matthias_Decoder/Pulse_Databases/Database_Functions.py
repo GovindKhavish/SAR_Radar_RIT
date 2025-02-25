@@ -29,26 +29,196 @@ def count_rows_in_database(db_path):
     conn.close()
     return row_count
 
-
 # --------------------- PDWs Analysis ---------------------
-def pdw_analysis(db_path):
+def bin_values(values, tolerance):
+    """Bins values based on a 5% threshold using numpy."""
+    values = np.sort(values)
+    bins = [values[0]]  # Start with the first value
+    for val in values[1:]:
+        if val > bins[-1] * (1 + tolerance):  # If outside the % range, start new bin
+            bins.append(val)
+    return np.digitize(values, bins, right=True)
+
+def pdw_analysis(db_path, tolerance):
     # Connect to the database and load data
     conn = sqlite3.connect(db_path)
     query = "SELECT pulse_number, center_frequency, chirp_rate, pulse_duration FROM pulse_data"
     df = pd.read_sql_query(query, conn)
     conn.close()
 
-    # Perform PDW grouping using pandas
-    grouped_df = df.groupby(["center_frequency", "chirp_rate"]).agg(
+    # Apply binning to group center frequency and chirp rate based on tolerance
+    df["center_freq_bin"] = bin_values(df["center_frequency"].values, tolerance)
+    df["chirp_rate_bin"] = bin_values(df["chirp_rate"].values, tolerance)
+
+    # Group by these bins and calculate required statistics
+    grouped_df = df.groupby(["center_freq_bin", "chirp_rate_bin"]).agg(
         pulse_count=("pulse_number", "count"),
         mean_pulse_duration=("pulse_duration", "mean"),
         min_pulse_duration=("pulse_duration", "min"),
         max_pulse_duration=("pulse_duration", "max"),
+        mean_center_frequency=("center_frequency", "mean"),  # Added mean center frequency
+        mean_chirp_rate=("chirp_rate", "mean")               # Added mean chirp rate
     ).reset_index()
 
-    pl_grouped_df = pl.from_pandas(grouped_df)
+    # Return the grouped DataFrame
+    return grouped_df
 
-    return pl_grouped_df
+
+def plot_pdw_scatter(df):
+    """Scatter plot of Center Frequency vs. Chirp Rate using the actual values."""
+
+    # Ensure correct column names
+    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count"]
+    for col in expected_columns:
+        if col not in df.columns:
+            raise ValueError(f"Missing expected column: {col}")
+
+    plt.figure(figsize=(8, 6))
+
+    # Define color mapping for unique frequency bins
+    unique_bins = df["center_freq_bin"].unique()
+    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
+    color_map = dict(zip(unique_bins, colors))
+
+    # Scatter plot with actual center frequency and chirp rate
+    for _, row in df.iterrows():
+        plt.scatter(
+            row["mean_center_frequency"],  # Use actual center frequency
+            row["mean_chirp_rate"],         # Use actual chirp rate
+            s=row["pulse_count"] * 5,       # Scale marker size by pulse count
+            color=color_map[row["center_freq_bin"]],
+            alpha=0.6,
+            label=f'Bin {row["center_freq_bin"]}' if row["center_freq_bin"] not in plt.gca().get_legend_handles_labels()[1] else ""
+        )
+
+    # Labels and title
+    plt.xlabel("Center Frequency (Hz)")
+    plt.ylabel("Chirp Rate (Hz/s)")
+    plt.title("Center Frequency vs Chirp Rate (Grouped by 5% Tolerance)")
+    plt.legend(title="Center Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.show()
+
+
+# def plot_top_5_pdw_scatter_with_table(df):
+#     """Scatter plot of the top 5 bins with the highest pulse counts along with a summary table in a Tkinter window."""
+
+#     print("Columns in DataFrame:", df.schema)  # Debugging step
+
+#     # Select the top 5 bins with the highest pulse counts
+#     top_5_df = df.sort("pulse_count", descending=True).limit(5)
+
+#     # Ensure correct column names
+#     expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count", 
+#                         "mean_pulse_duration", "min_pulse_duration", "max_pulse_duration"]
+#     for col in expected_columns:
+#         if col not in top_5_df.columns:
+#             raise ValueError(f"Missing expected column: {col}")
+
+#     # --------- Create a Tkinter Window for the Table ---------
+#     root = tk.Tk()
+#     root.title("Top 5 Bins Summary")
+
+#     frame = tk.Frame(root)
+#     frame.pack(fill="both", expand=True)
+
+#     # Treeview widget with scrollbar
+#     tree = ttk.Treeview(frame, columns=expected_columns, show="headings")
+#     vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+#     hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+#     tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+#     vsb.pack(side="right", fill="y")
+#     hsb.pack(side="bottom", fill="x")
+#     tree.pack(side="left", fill="both", expand=True)
+
+#     # Define column headings
+#     for col in expected_columns:
+#         tree.heading(col, text=col)
+#         tree.column(col, width=120)
+
+#     # Insert data into treeview
+#     for row in top_5_df.iter_rows(named=True):
+#         tree.insert("", "end", values=[row[col] for col in expected_columns])
+
+#     # --------- Plot Scatter ---------
+#     plt.figure(figsize=(8, 6))
+
+#     # Define color mapping for unique frequency bins
+#     unique_bins = top_5_df["center_freq_bin"].unique().to_list()
+#     colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
+#     color_map = dict(zip(unique_bins, colors))
+
+#     # Scatter plot with pulse count as marker size
+#     for row in top_5_df.iter_rows(named=True):
+#         plt.scatter(
+#             row["center_freq_bin"],
+#             row["chirp_rate_bin"],
+#             s=row["pulse_count"] * 10,  # Scale marker size by pulse count
+#             color=color_map[row["center_freq_bin"]],
+#             alpha=0.75,
+#             label=f'Bin {row["center_freq_bin"]}'
+#         )
+
+#     # Labels and title
+#     plt.xlabel("Center Frequency Bin")
+#     plt.ylabel("Chirp Rate Bin")
+#     plt.title("Top 5 Bins with Most Pulses")
+#     plt.legend(title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+#     plt.grid(True, linestyle="--", alpha=0.5)
+#     plt.show()
+
+#     root.mainloop()  # Run Tkinter event loop
+
+def plot_top_5_pdw_scatter_with_summary_table(df):
+    """Scatter plot of the top 5 bins with the highest pulse counts along with a summary table in the console."""
+
+    print("Columns in DataFrame:", df.columns)  # Debugging step
+
+    # Sort by pulse_count in descending order and select the top 5 groups
+    top_5_df = df.sort_values(by="pulse_count", ascending=False).head(5)
+
+    # Ensure correct column names are present in the top 5 DataFrame
+    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count", 
+                        "mean_pulse_duration", "min_pulse_duration", "max_pulse_duration", 
+                        "mean_center_frequency", "mean_chirp_rate"]
+    
+    # Verify that all required columns exist in the DataFrame
+    for col in expected_columns:
+        if col not in top_5_df.columns:
+            raise ValueError(f"Missing expected column: {col}")
+
+    # --------- Display Summary Table ---------
+    print("\nTop 5 Bins with Most Pulses (Summary Table):")
+    print(top_5_df[["mean_center_frequency", "mean_chirp_rate", "pulse_count", 
+                    "mean_pulse_duration", "min_pulse_duration", "max_pulse_duration"]])
+
+    # --------- Plot Scatter ---------
+    plt.figure(figsize=(8, 6))
+
+    # Define color mapping for unique frequency bins
+    unique_bins = top_5_df["mean_center_frequency"].unique()
+    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
+    color_map = dict(zip(unique_bins, colors))
+
+    # Scatter plot with pulse count as marker size
+    for _, row in top_5_df.iterrows():
+        plt.scatter(
+            row["mean_center_frequency"],  # Plot actual center frequency
+            row["mean_chirp_rate"],         # Plot actual chirp rate
+            s=row["pulse_count"] * 10,      # Scale marker size by pulse count
+            color=color_map[row["mean_center_frequency"]],
+            alpha=0.75,
+            label=f'Bin {row["mean_center_frequency"]}'
+        )
+
+    # Labels and title
+    plt.xlabel("Mean Center Frequency")
+    plt.ylabel("Mean Chirp Rate")
+    plt.title("Top 5 Bins with Most Pulses (with Actual Values)")
+    plt.legend(title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.show()
 
 # --------------------- Display Database ---------------------
 def display_database_in_window(db_path):
