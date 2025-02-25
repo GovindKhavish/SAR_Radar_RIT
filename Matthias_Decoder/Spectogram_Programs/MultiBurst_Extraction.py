@@ -341,6 +341,7 @@ with conn:
             # Standard unit conversion
             bandwidth_hz = params["bandwidth"] * 1e6  # MHz to Hz
             center_frequency_hz = params["center_frequency"] * 1e6  # MHz to Hz
+            chirp_rate_hz_per_sec = params["chirp_rate"] * 1e6 * 1e6  # MHz/µs to Hz/s
             adjusted_start_time_sec = params["adjusted_start_time"] * 1e-6  # µs to sec
             adjusted_end_time_sec = params["adjusted_end_time"] * 1e-6  # µs to sec
             pulse_duration_sec = params["pulse_duration"] * 1e-6  # µs to sec
@@ -357,7 +358,7 @@ with conn:
                 (
                     int(params["pulse_number"]),  # Global pulse number
                     int(params["burst_number"]),  # Burst number
-                    bandwidth_hz, center_frequency_hz, params["chirp_rate"],
+                    bandwidth_hz, center_frequency_hz, chirp_rate_hz_per_sec,
                     int(params["start_time_index"]), int(params["end_time_index"]),
                     adjusted_start_time_sec, adjusted_end_time_sec, pulse_duration_sec,
                     0,  # Set DOD to 0
