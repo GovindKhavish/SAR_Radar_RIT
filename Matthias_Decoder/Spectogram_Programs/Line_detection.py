@@ -28,14 +28,14 @@ import sentinel1decoder
 
 # Mipur VH Filepath
 #filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+# filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
-# filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
-# filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
+filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
@@ -48,7 +48,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 3
+selected_burst = 1
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -69,7 +69,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1250
+idx_n = 44
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -91,8 +91,6 @@ ax.set_ylabel('Freq [MHz]', fontweight='bold')
 ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
-
-print(cc)
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
@@ -120,45 +118,20 @@ freq_size = aa.shape[0] # Time
 
 # Create 2D Mask
 #vert_guard,vert_avg,hori_Guard,hori_avg
-vert_guard = 12
-vert_avg = 30
-hori_guard = 10
-hori_avg = 30
+vert_guard = 50
+vert_avg = 50
+hori_guard = 50
+hori_avg = 100
 alarm_rate = 1e-9
 
 cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
 
-# # Plot the CFAR Mask
-# plt.figure(figsize=(2, 10))
-# plt.imshow(cfar_mask, interpolation='none', aspect='auto')
-# plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
-# plt.xlabel('Fast Time')
-# plt.ylabel('Slow Time')
-# plt.colorbar(label='Filter Amplitude')
-
 padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
-
-# Plot the Padded Mask
-# plt.figure(figsize=(2, 10))
-# plt.imshow(padded_mask, interpolation='none', aspect='auto')
-# plt.title('Vertical CFAR Mask with CUT, Guard Cells, and Averaging Cells')
-# plt.xlabel('Fast Time')
-# plt.ylabel('Slow Time')
-# plt.colorbar(label='Filter Amplitude')
 
 alpha = Spectogram_FunctionsV3.set_alpha(Spectogram_FunctionsV3.get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
 
 # thres_map = cfar_method(aa,cfar_mask,alpha)
 thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
-
-# Plot the Threshold Map
-# plt.figure(figsize=(10, 5))
-# plt.imshow(thres_map, interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
-# plt.title('Threshold map')
-# plt.xlabel('Time [us]')
-# plt.ylabel('Frequency [MHz]')
-# plt.colorbar(label='Filter Amplitude')
-# plt.tight_layout()
 
 # Detect the targets using the spectrogram data
 aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
@@ -171,10 +144,10 @@ plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
 plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
+# plt.show()
 
 # Assume aa_filtered_clean is the spectrogram in dB format
 aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
-
 # Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
 filtered_radar_data = aa * aa_filtered_clean
 
@@ -231,7 +204,15 @@ for region in regionprops(labeled_mask):
     if (min_angle <= angle <= max_angle) or (180 - max_angle <= angle <= 180 - min_angle):
         # Keep only slashes and exclude non-slash shapes
         filtered_mask_slashes[labeled_mask == region.label] = True
-# ----------------------------------------------------------------------------
+
+# Visualize the filtered mask (only the valid forward and backslash shapes)
+plt.figure(figsize=(10, 5))
+plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
+plt.title("Filtered Mask (Only Forward and Backslash Shapes)")
+plt.colorbar(label="Mask Value (True/False)")
+plt.tight_layout()
+plt.show()
+
 # Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
 time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
 # DBSCAN Clustering
@@ -297,7 +278,7 @@ for cluster_id in np.unique(clusters):
         frequency_indices = bb[cluster_points[:, 0]]  # Use the correct frequency bins (bb)
         
         # 2nd column of the time_freq_data
-        time_indices = cc[cluster_points[:, 1]]  # us
+        time_indices = cluster_points[:, 1]  # us
         bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
         center_frequency = np.mean(frequency_indices)
         time_span = np.max(time_indices) - np.min(time_indices)  # us
@@ -376,3 +357,4 @@ if len(isolated_pulses_data) > 0:
 
 else:
     print("No clusters detected, skipping the isolated I/Q data visualization.")
+

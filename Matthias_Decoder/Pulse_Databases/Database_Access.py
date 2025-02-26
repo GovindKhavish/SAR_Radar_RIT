@@ -13,14 +13,17 @@ import Database_Functions  # Custom module for database handling and plotting
 # Path to the database
 db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
 # db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
-db_name = "pulse_characteristics_Israel.db"
+db_name = "pulse_characteristics_Mipur.db"
 db_path = f"{db_folder}/{db_name}"
 
 # Load pulse data
 pulse_data = Database_Functions.load_pulse_data_from_db(db_path)
+row_count = Database_Functions.count_rows_in_database(db_path)
+print(row_count)
 
 # View the database in a window and allow row selection
-Database_Functions.display_database_in_window(db_path)
+#Database_Functions.display_database_in_window(db_path)
+Database_Functions.display_converted_database_in_window(db_path)
 pdw_results = Database_Functions.pdw_analysis(db_path,0.07)
 # Call the scatter plot function
 Database_Functions.plot_pdw_scatter(pdw_results)

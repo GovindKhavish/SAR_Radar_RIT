@@ -95,7 +95,7 @@ def plot_pdw_scatter(df):
     plt.xlabel("Center Frequency (Hz)")
     plt.ylabel("Chirp Rate (Hz/s)")
     plt.title("Center Frequency vs Chirp Rate (Grouped by 5% Tolerance)")
-    plt.legend(title="Center Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    #plt.legend(title="Center Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()
 
@@ -170,31 +170,42 @@ def plot_pdw_scatter(df):
 
 #     root.mainloop()  # Run Tkinter event loop
 
-def plot_top_5_pdw_scatter_with_summary_table(df):
-    """Scatter plot of the top 5 bins with the highest pulse counts along with a summary table in the console."""
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_top_5_pdw_scatter_with_summary_table(df, tolerance=0.07):
+    """Scatter plot of the top 5 groups with the highest pulse counts along with a summary table in the console."""
 
     print("Columns in DataFrame:", df.columns)  # Debugging step
+
+    # Convert center frequency from Hz to MHz
+    df["mean_center_frequency"] = df["mean_center_frequency"] / 1e6  # Convert Hz → MHz
+
+    # Calculate total pulses for percentage calculation
+    total_pulses = df["pulse_count"].sum()
 
     # Sort by pulse_count in descending order and select the top 5 groups
     top_5_df = df.sort_values(by="pulse_count", ascending=False).head(5)
 
+    # Add percentage column
+    top_5_df = top_5_df.assign(percentage=(top_5_df["pulse_count"] / total_pulses) * 100)
+
     # Ensure correct column names are present in the top 5 DataFrame
     expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count", 
                         "mean_pulse_duration", "min_pulse_duration", "max_pulse_duration", 
-                        "mean_center_frequency", "mean_chirp_rate"]
+                        "mean_center_frequency", "mean_chirp_rate", "percentage"]
     
-    # Verify that all required columns exist in the DataFrame
     for col in expected_columns:
         if col not in top_5_df.columns:
             raise ValueError(f"Missing expected column: {col}")
 
     # --------- Display Summary Table ---------
-    print("\nTop 5 Bins with Most Pulses (Summary Table):")
-    print(top_5_df[["mean_center_frequency", "mean_chirp_rate", "pulse_count", 
+    print("\nTop 5 Groups with Most Pulses (Summary Table):")
+    print(top_5_df[["mean_center_frequency", "mean_chirp_rate", "pulse_count", "percentage",
                     "mean_pulse_duration", "min_pulse_duration", "max_pulse_duration"]])
 
     # --------- Plot Scatter ---------
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(9, 7))
 
     # Define color mapping for unique frequency bins
     unique_bins = top_5_df["mean_center_frequency"].unique()
@@ -203,22 +214,45 @@ def plot_top_5_pdw_scatter_with_summary_table(df):
 
     # Scatter plot with pulse count as marker size
     for _, row in top_5_df.iterrows():
+        center_freq = row["mean_center_frequency"]
+        chirp_rate = row["mean_chirp_rate"]
+        pulse_count = row["pulse_count"]
+        
+        # Plot the main scatter point (center point)
         plt.scatter(
-            row["mean_center_frequency"],  # Plot actual center frequency
-            row["mean_chirp_rate"],         # Plot actual chirp rate
-            s=row["pulse_count"] * 10,      # Scale marker size by pulse count
-            color=color_map[row["mean_center_frequency"]],
-            alpha=0.75,
-            label=f'Bin {row["mean_center_frequency"]}'
+            center_freq, chirp_rate,
+            s=150, color="black", edgecolors="white", marker="o", zorder=3, label="Center"
         )
 
+        # Draw tolerance box
+        rect = plt.Rectangle(
+            (center_freq - tolerance, chirp_rate - tolerance),  # Bottom left corner
+            2 * tolerance,  # Width
+            2 * tolerance,  # Height
+            linewidth=1.5, edgecolor=color_map[center_freq], facecolor="none", linestyle="-"
+        )
+        plt.gca().add_patch(rect)
+
+    # Extend axes limits
+    x_min, x_max = top_5_df["mean_center_frequency"].min(), top_5_df["mean_center_frequency"].max()
+    y_min, y_max = top_5_df["mean_chirp_rate"].min(), top_5_df["mean_chirp_rate"].max()
+    plt.xlim(x_min - 0.1 * (x_max - x_min), x_max + 0.1 * (x_max - x_min))  # Extend x-axis by 10%
+    plt.ylim(y_min - 0.1 * (y_max - y_min), y_max + 0.1 * (y_max - y_min))  # Extend y-axis by 10%
+
     # Labels and title
-    plt.xlabel("Mean Center Frequency")
+    plt.xlabel("Mean Center Frequency (MHz)")  # Updated label
     plt.ylabel("Mean Chirp Rate")
-    plt.title("Top 5 Bins with Most Pulses (with Actual Values)")
-    plt.legend(title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    plt.title("Top 5 Groups with Most Pulses (MHz Conversion & Highlighted Centers)")
+
+    # Improve legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    unique_labels = dict(zip(labels, handles))
+    plt.legend(unique_labels.values(), unique_labels.keys(), title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()
+
+
 
 # --------------------- Display Database ---------------------
 def display_database_in_window(db_path):
@@ -260,6 +294,60 @@ def display_database_in_window(db_path):
         tree.insert("", "end", values=row)
 
     root.mainloop()
+
+
+def display_converted_database_in_window(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Fetch data
+    cursor.execute("SELECT * FROM pulse_data")
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]
+    conn.close()
+
+    # Convert back to original units
+    converted_rows = []
+    for row in rows:
+        converted_row = list(row)
+        converted_row[columns.index("bandwidth")] /= 1e6  # Hz to MHz
+        converted_row[columns.index("center_frequency")] /= 1e6  # Hz to MHz
+        converted_row[columns.index("chirp_rate")] /= 1e12  # Hz/s to MHz/µs
+        converted_row[columns.index("adjusted_start_time")] *= 1e6  # sec to µs
+        converted_row[columns.index("adjusted_end_time")] *= 1e6  # sec to µs
+        converted_row[columns.index("pulse_duration")] *= 1e6  # sec to µs
+        converted_row[columns.index("toa")] *= 1e6  # sec to µs
+        converted_rows.append(tuple(converted_row))
+
+    # Create window
+    root = tk.Tk()
+    root.title("Converted Pulse Data Viewer")
+
+    frame = tk.Frame(root)
+    frame.pack(fill="both", expand=True)
+
+    # Scrollbars
+    tree = ttk.Treeview(frame, columns=columns, show="headings")
+    vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+    tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+    # Pack widgets
+    vsb.pack(side="right", fill="y")
+    hsb.pack(side="bottom", fill="x")
+    tree.pack(side="left", fill="both", expand=True)
+
+    # Define column headings
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=100)
+
+    # Insert converted data into tree
+    for row in converted_rows:
+        tree.insert("", "end", values=row)
+
+    root.mainloop()
+
 
 # --------------------- Plotting Functions ---------------------
 # --------------------- I/Q Data Retrieval ---------------------

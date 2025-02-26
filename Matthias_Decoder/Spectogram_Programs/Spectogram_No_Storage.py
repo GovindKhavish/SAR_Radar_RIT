@@ -8,8 +8,9 @@ import numpy as np
 import polars as pl
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
-from scipy.signal import spectrogram
-from scipy.ndimage import binary_dilation, label, find_objects
+from skimage.measure import label, regionprops
+from skimage.morphology import binary_dilation
+import math
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
@@ -130,44 +131,75 @@ for idx_n in range(start_idx, end_idx + 1):
 
     # ------------------- Shape Detection ---------------------
     aa_filtered_clean = aa_db_filtered  
+    # Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
+    filtered_radar_data = aa * aa_filtered_clean
 
-    gradient_x = np.gradient(aa_filtered_clean, axis=1)
-    gradient_y = np.gradient(aa_filtered_clean, axis=0)
-    gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+    # Create a new array to store the filtered spectrogram data (keep values where CFAR mask is non-zero)
+    filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
+    filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
-   # Define a mask for slash gradients
-    slash_mask = (gradient_x > 0.05) & (gradient_y < 0.2) & (gradient_magnitude > np.percentile(gradient_magnitude, 70))
+    # # Visualize the filtered spectrogram
+    # plt.figure(figsize=(10, 5))
+    # plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
+    # plt.title("Filtered Spectrogram (Only Extracted Values)")
+    # plt.colorbar(label="Intensity")
+    # plt.xlabel("Time (samples)")
+    # plt.ylabel("Frequency (Hz)")
+    # plt.tight_layout()
+    # plt.show()
 
-    dilated_mask = binary_dilation(slash_mask, structure=np.ones((6, 6)))
+    # Apply binary dilation to widen the detected shapes (slashes)
+    dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 
-    chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
-    min_length = 10
-    labeled_mask, num_features = label(dilated_mask)
-    slices = find_objects(labeled_mask)
-    filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
+    # Label the connected components in the dilated binary mask
+    labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 
-    for i, slice_obj in enumerate(slices, start=1):
-        component = (labeled_mask[slice_obj] == i)
-        y_coords, x_coords = np.where(component)
-            
-        if len(x_coords) > 0 and len(y_coords) > 0:
-            length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
-                
-            if length >= min_length:
-                filtered_mask[slice_obj][component] = True
+    # Define angle thresholds (in degrees)
+    min_angle = 30
+    max_angle = 75
 
-    length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
+    # Define minimum diagonal length (threshold, adjust as needed)
+    min_diagonal_length = 20
+
+    # Create an empty filtered mask for slashes
+    filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
+
+    # Filter based on angle, diagonal length, and aspect ratio for slashes
+    for region in regionprops(labeled_mask):
+        # Get the bounding box of the region (ymin, ymax, xmin, xmax)
+        minr, minc, maxr, maxc = region.bbox
+
+        # Calculate the diagonal length (Euclidean distance between top-left and bottom-right corners)
+        diagonal_length = math.sqrt((maxr - minr)**2 + (maxc - minc)**2)
+
+        # Filter by diagonal length (skip small regions)
+        if diagonal_length < min_diagonal_length:
+            continue
+
+        # Calculate the slope of the diagonal line (between top-left and bottom-right)
+        slope = (maxr - minr) / (maxc - minc) if (maxc - minc) != 0 else 0
+
+        # Calculate the angle in degrees
+        angle = np.degrees(np.arctan(slope))
+
+        # Forward slash: 45° to 75°
+        # Backslash: -45° to -75° (or equivalently, 105° to 75°)
+        if (min_angle <= angle <= max_angle) or (180 - max_angle <= angle <= 180 - min_angle):
+            # Keep only slashes and exclude non-slash shapes
+            filtered_mask_slashes[labeled_mask == region.label] = True
 
     # ------------------ Detect Chirp Candidates ------------------
-    time_freq_data = np.column_stack(np.where(length_filtered_candidates> 0))
-    frequency_indices = bb[time_freq_data[:, 0]]
+    time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
+    # DBSCAN Clustering
+    clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
+    # Map the frequency indices to MHz
+    frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
+    # Map the time indices to microseconds
+    time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
 
     if time_freq_data.shape[0] == 0:
         continue  # No data points, skip this range line
 
-    # Apply DBSCAN for clustering
-    dbscan = DBSCAN(eps=20, min_samples=5)
-    clusters = dbscan.fit_predict(time_freq_data)
     num_clusters = len(np.unique(clusters[clusters != -1]))
 
     # Skip feature extraction if no valid clusters
@@ -179,7 +211,7 @@ for idx_n in range(start_idx, end_idx + 1):
         if cluster_id != -1:  # Ignore noise points
             cluster_points = time_freq_data[clusters == cluster_id]
             frequency_indices = bb[cluster_points[:, 0]]
-            time_indices = cluster_points[:, 1]
+            time_indices = cc[cluster_points[:, 1]]
 
             bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
             center_frequency = np.mean(frequency_indices)
