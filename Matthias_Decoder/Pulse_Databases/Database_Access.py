@@ -11,8 +11,8 @@ import Database_Functions  # Custom module for database handling and plotting
 
 #----------------------------------------------------------------------------------------#
 # Path to the database
-db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
-# db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
+#db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
+db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
 db_name = "pulse_characteristics_Mipur.db"
 db_path = f"{db_folder}/{db_name}"
 
@@ -32,11 +32,11 @@ Database_Functions.plot_pdw_scatter(pdw_results)
 Database_Functions.plot_top_5_pdw_scatter_with_summary_table(pdw_results) 
 
 # # Plot the pulse characteristics
-# rows = Database_Functions.count_rows_in_database(db_path)
-# Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
-# Database_Functions.plot_duration_vs_pulse_number(pulse_data)
-# Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
-# Database_Functions.plot_chirp_rate_vs_pulse_number(pulse_data)
+rows = Database_Functions.count_rows_in_database(db_path)
+Database_Functions.plot_bandwidth_vs_pulse_number(pulse_data)
+Database_Functions.plot_duration_vs_pulse_number(pulse_data)
+Database_Functions.plot_center_frequency_vs_pulse_number(pulse_data)
+Database_Functions.plot_chirp_rate_vs_pulse_number(pulse_data)
 
 #pdw_results = Database_Functions.pdw_analysis(db_path)
 

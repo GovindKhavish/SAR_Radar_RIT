@@ -132,16 +132,6 @@ for selected_burst in burst_array:
         filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
         filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
-        # # Visualize the filtered spectrogram
-        # plt.figure(figsize=(10, 5))
-        # plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
-        # plt.title("Filtered Spectrogram (Only Extracted Values)")
-        # plt.colorbar(label="Intensity")
-        # plt.xlabel("Time (samples)")
-        # plt.ylabel("Frequency (Hz)")
-        # plt.tight_layout()
-        # plt.show()
-
         # Apply binary dilation to widen the detected shapes (slashes)
         dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 
@@ -204,6 +194,7 @@ for selected_burst in burst_array:
                 if cluster_id != -1:  
                     cluster_points = time_freq_data[clusters == cluster_id]
                     frequency_indices = bb[cluster_points[:, 0]]
+                    #iq_indices = cluster_points[:, 1]
                     time_indices = cc[cluster_points[:, 1]]
 
                     bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
@@ -213,6 +204,9 @@ for selected_burst in burst_array:
 
                     start_time = np.min(time_indices) / fs  
                     end_time = np.max(time_indices) / fs  
+                    #start_iq = np.min(iq_indices) 
+                    #end_iq = np.max(iq_indices)  
+                    
                     adjusted_start_time = start_time + slow_time_offset
                     adjusted_end_time = end_time + slow_time_offset
                     pulse_duration = adjusted_end_time - adjusted_start_time
@@ -233,6 +227,8 @@ for selected_burst in burst_array:
                         'adjusted_start_time': adjusted_start_time,
                         'adjusted_end_time': adjusted_end_time,
                         'pulse_duration': pulse_duration
+                        #'start_time_iq': np.min(start_iq),
+                        #'end_time_iq': np.max(end_iq)
                     })
                     global_pulse_number += 1  
 
@@ -246,10 +242,10 @@ for selected_burst in burst_array:
             # cluster_time_indices = {}
             # for (rangeline_idx, cluster_id), params_list in global_cluster_params.items():
             #     for params in params_list:
-            #         start_time_idx = params['start_time_index']
-            #         end_time_idx = params['end_time_index']
-            #         iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-            #         iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+            #         start_time_iq = params['start_time_iq']
+            #         end_time_iq = params['end_time_iq']
+            #         iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_iq, sampling_rate, time_step)
+            #         iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_iq,sampling_rate, time_step)
                     
             #         pulse_number = params['pulse_number']
             #         if pulse_number not in cluster_time_indices:
@@ -283,7 +279,7 @@ for selected_burst in burst_array:
 # ------------------ Database Storage -------------------
 # db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
 db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
-db_name = "pulse_characteristics_Augsberg.db"
+db_name = "pulse_characteristics_Mipur.db"
 db_path = os.path.join(db_folder, db_name)
 
 # Create folder if it doesn't exist

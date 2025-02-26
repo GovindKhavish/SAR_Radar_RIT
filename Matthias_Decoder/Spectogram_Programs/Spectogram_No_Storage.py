@@ -30,7 +30,7 @@ import sentinel1decoder
 # Mipur VH Filepath
 filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
@@ -53,7 +53,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 11
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -75,7 +75,7 @@ plt.show()
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 0
+start_idx = 1250
 end_idx = 1400
 fs = 46918402.800000004  
 
@@ -191,7 +191,12 @@ for idx_n in range(start_idx, end_idx + 1):
     # ------------------ Detect Chirp Candidates ------------------
     time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
     # DBSCAN Clustering
-    clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
+    if time_freq_data.shape[0] > 0:
+        clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
+        print(idx_n)
+    else:
+        print("No data points to cluster.")
+
     # Map the frequency indices to MHz
     frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
     # Map the time indices to microseconds
@@ -211,6 +216,7 @@ for idx_n in range(start_idx, end_idx + 1):
         if cluster_id != -1:  # Ignore noise points
             cluster_points = time_freq_data[clusters == cluster_id]
             frequency_indices = bb[cluster_points[:, 0]]
+            iq_indices = cluster_points[:, 1]
             time_indices = cc[cluster_points[:, 1]]
 
             bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
@@ -223,6 +229,9 @@ for idx_n in range(start_idx, end_idx + 1):
             adjusted_start_time = start_time + slow_time_offset
             adjusted_end_time = end_time + slow_time_offset
             pulse_duration = adjusted_end_time - adjusted_start_time
+
+            start_iq = np.min(iq_indices) 
+            end_iq = np.max(iq_indices)  
 
             unique_key = (idx_n, cluster_id)
 
@@ -238,7 +247,9 @@ for idx_n in range(start_idx, end_idx + 1):
                 'end_time_index': np.max(time_indices),
                 'adjusted_start_time': adjusted_start_time,
                 'adjusted_end_time': adjusted_end_time,
-                'pulse_duration': pulse_duration
+                'pulse_duration': pulse_duration,
+                'start_time_iq': np.min(start_iq),
+                'end_time_iq': np.max(end_iq)
             })
 
             global_pulse_number += 1
@@ -247,30 +258,25 @@ for idx_n in range(start_idx, end_idx + 1):
         # NFFT = 256
         # noverlap = 200
         # sampling_rate = fs
-
         # time_step = (NFFT - noverlap) / sampling_rate
-
-        # # Dictionary to store isolated I/Q data for each pulse (global storage)
         # isolated_pulses_data = {}
 
         # cluster_time_indices = {}
         # for (rangeline_idx, cluster_id), params_list in global_cluster_params.items():
         #     for params in params_list:
-        #         start_time_idx = params['start_time_index']
-        #         end_time_idx = params['end_time_index']
-        #         iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-        #         iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+        #         start_time_iq = params['start_time_iq']
+        #         end_time_iq = params['end_time_iq']
+        #         iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_iq, sampling_rate, time_step)
+        #         iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_iq,sampling_rate, time_step)
                 
         #         pulse_number = params['pulse_number']
         #         if pulse_number not in cluster_time_indices:
         #             cluster_time_indices[pulse_number] = []
         #         cluster_time_indices[pulse_number].append((rangeline_idx, cluster_id, iq_start_idx, iq_end_idx))
 
-        # # Initialize isolated data for each pulse
         # for pulse_number in cluster_time_indices:
         #     isolated_pulses_data[pulse_number] = []
 
-        # # Isolate radar data for each pulse
         # for idx in range(len(radar_section)):
         #     for pulse_number, clusters in cluster_time_indices.items():
         #         for (rangeline_idx, cluster_id, iq_start_idx, iq_end_idx) in clusters:
@@ -278,17 +284,17 @@ for idx_n in range(start_idx, end_idx + 1):
         #                 if len(isolated_pulses_data[pulse_number]) <= idx:
         #                     isolated_pulses_data[pulse_number].extend([0] * (idx - len(isolated_pulses_data[pulse_number]) + 1))
         #                 isolated_pulses_data[pulse_number][idx] = radar_section[idx]
-        #                 break  # Stop checking once matched
+        #                 break  
 
-        # # Convert lists to numpy arrays for each pulse
+        
         # for pulse_number in isolated_pulses_data:
         #     isolated_pulses_data[pulse_number] = np.array(isolated_pulses_data[pulse_number], dtype=complex)
 
-        # # Update the global variable with isolated data for this rangeline
+        
         # for pulse_number, data in isolated_pulses_data.items():
         #     if pulse_number not in global_isolated_pulses_data:
         #         global_isolated_pulses_data[pulse_number] = []
-        #     global_isolated_pulses_data[pulse_number].append(data)  # Append data from this rangeline
+        #     global_isolated_pulses_data[pulse_number].append(data) 
 
 # Plotting
 pulse_numbers = []
