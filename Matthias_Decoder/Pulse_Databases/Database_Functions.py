@@ -12,6 +12,7 @@ import polars as pl
 import tkinter as tk
 from tkinter import ttk
 from sklearn.cluster import DBSCAN
+import matplotlib.patches as patches
 #----------------------------------------------------------------------------------------#
 # --------------------- Loading Database ---------------------
 def load_pulse_data_from_db(db_path):
@@ -31,13 +32,19 @@ def count_rows_in_database(db_path):
 
 # --------------------- PDWs Analysis ---------------------
 def bin_values(values, tolerance):
-    """Bins values based on a 5% threshold using numpy."""
+    """Bins values based on a % threshold, checking against all existing bins."""
     values = np.sort(values)
     bins = [values[0]]  # Start with the first value
+    
     for val in values[1:]:
-        if val > bins[-1] * (1 + tolerance):  # If outside the % range, start new bin
+        # Check if value fits into any existing bin
+        fits_existing_bin = any(abs(val - b) / b <= tolerance for b in bins)
+        
+        if not fits_existing_bin:  # Create a new bin only if it doesn't fit anywhere
             bins.append(val)
+    
     return np.digitize(values, bins, right=True)
+
 
 def pdw_analysis(db_path, tolerance):
     # Connect to the database and load data
@@ -63,12 +70,59 @@ def pdw_analysis(db_path, tolerance):
     # Return the grouped DataFrame
     return grouped_df
 
+def plot_pdw_bins(df, tolerance):
+    """Plot rectangular bins for Center Frequency vs. Chirp Rate."""
+    
+    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count"]
+    for col in expected_columns:
+        if col not in df.columns:
+            raise ValueError(f"Missing expected column: {col}")
+
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+
+    # Define color mapping for unique bins
+    unique_bins = df["center_freq_bin"].unique()
+    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
+    color_map = dict(zip(unique_bins, colors))
+
+    for _, row in df.iterrows():
+        # Compute bin ranges with 5% tolerance
+        freq_min = row["center_freq_bin"] * (1 - tolerance)
+        freq_max = row["center_freq_bin"] * (1 + tolerance)
+        chirp_min = row["chirp_rate_bin"] * (1 - tolerance)
+        chirp_max = row["chirp_rate_bin"] * (1 + tolerance)
+        
+        # Create a rectangle
+        rect = patches.Rectangle(
+            (freq_min, chirp_min),  # Bottom-left corner
+            freq_max - freq_min,    # Width (frequency range)
+            chirp_max - chirp_min,  # Height (chirp rate range)
+            linewidth=1.5,
+            edgecolor=color_map[row["center_freq_bin"]],
+            facecolor="none",
+            linestyle="--",
+            label=f'Bin {row["center_freq_bin"]}' if row["center_freq_bin"] not in plt.gca().get_legend_handles_labels()[1] else ""
+        )
+        ax.add_patch(rect)
+
+    # Labels and title
+    plt.xlabel("Center Frequency (Hz)")
+    plt.ylabel("Chirp Rate (Hz/s)")
+    plt.title("Binned Center Frequency vs Chirp Rate (with Tolerance)")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend(title="Center Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    plt.xlim(df["center_freq_bin"].min() * 0.95, df["center_freq_bin"].max() * 1.05)
+    plt.ylim(df["chirp_rate_bin"].min() * 0.95, df["chirp_rate_bin"].max() * 1.05)
+    plt.show()
+
+
 
 def plot_pdw_scatter(df):
     """Scatter plot of Center Frequency vs. Chirp Rate using the actual values."""
 
     # Ensure correct column names
-    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count"]
+    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count", "mean_center_frequency", "mean_chirp_rate"]
     for col in expected_columns:
         if col not in df.columns:
             raise ValueError(f"Missing expected column: {col}")
@@ -77,27 +131,30 @@ def plot_pdw_scatter(df):
 
     # Define color mapping for unique frequency bins
     unique_bins = df["center_freq_bin"].unique()
-    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
-    color_map = dict(zip(unique_bins, colors))
+    color_map = plt.cm.get_cmap("tab10", len(unique_bins))  # Using a predefined colormap
 
     # Scatter plot with actual center frequency and chirp rate
-    for _, row in df.iterrows():
+    for i, bin_value in enumerate(unique_bins):
+        # Filter data by bin
+        bin_data = df[df["center_freq_bin"] == bin_value]
+        # Plot data for each bin with a unique color
         plt.scatter(
-            row["mean_center_frequency"],  # Use actual center frequency
-            row["mean_chirp_rate"],         # Use actual chirp rate
-            s=row["pulse_count"] * 5,       # Scale marker size by pulse count
-            color=color_map[row["center_freq_bin"]],
-            alpha=0.6,
-            label=f'Bin {row["center_freq_bin"]}' if row["center_freq_bin"] not in plt.gca().get_legend_handles_labels()[1] else ""
+            bin_data["mean_center_frequency"] / 1e6,  # Convert center frequency to MHz
+            bin_data["mean_chirp_rate"]/ 1e12,        # Convert chirp rate to MHz/us
+            s=bin_data["pulse_count"] * 5,            # Scale marker size by pulse count
+            color=color_map(i),                       # Use the color from colormap
+            alpha=0.6
         )
 
     # Labels and title
-    plt.xlabel("Center Frequency (Hz)")
-    plt.ylabel("Chirp Rate (Hz/s)")
-    plt.title("Center Frequency vs Chirp Rate (Grouped by 5% Tolerance)")
-    #plt.legend(title="Center Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    plt.xlabel("Center Frequency (MHz)")
+    plt.ylabel("Chirp Rate (MHz/us)")
+    plt.title("Center Frequency vs Chirp Rate (Grouped by Tolerance)")
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()
+
+
+
 
 
 # def plot_top_5_pdw_scatter_with_table(df):
@@ -171,16 +228,13 @@ def plot_pdw_scatter(df):
 #     root.mainloop()  # Run Tkinter event loop
 
 
-def plot_top_5_pdw_scatter_with_summary_table(df, tolerance=0.07):
+def plot_top_5_pdw_scatter_with_summary_table(df, tolerance):
     """Scatter plot of the top 5 groups with the highest pulse counts along with a summary table in the console."""
 
     print("Columns in DataFrame:", df.columns)  # Debugging step
 
     # Convert center frequency from Hz to MHz (if it's not already in MHz)
     df["mean_center_frequency"] = df["mean_center_frequency"] / 1e6  # Convert Hz → MHz
-
-    # Convert chirp rate from Hz/s to MHz/µs (if it's in Hz/s)
-    df["mean_chirp_rate"] = df["mean_chirp_rate"] / 1e12  # Convert Hz/s → MHz/µs
 
     # Calculate total pulses for percentage calculation
     total_pulses = df["pulse_count"].sum()
@@ -237,18 +291,18 @@ def plot_top_5_pdw_scatter_with_summary_table(df, tolerance=0.07):
     # Extend axes limits
     x_min, x_max = top_5_df["mean_center_frequency"].min(), top_5_df["mean_center_frequency"].max()
     y_min, y_max = top_5_df["mean_chirp_rate"].min(), top_5_df["mean_chirp_rate"].max()
-    plt.xlim(x_min - 0.1 * (x_max - x_min), x_max + 0.1 * (x_max - x_min))  # Extend x-axis by 10%
-    plt.ylim(y_min - 0.1 * (y_max - y_min), y_max + 0.1 * (y_max - y_min))  # Extend y-axis by 10%
+    plt.xlim(x_min - 1 * (x_max - x_min), x_max + 1 * (x_max - x_min))  # Extend x-axis by 10%
+    plt.ylim(y_min - 1 * (y_max - y_min), y_max + 1 * (y_max - y_min))  # Extend y-axis by 10%
 
     # Labels and title
     plt.xlabel("Mean Center Frequency (MHz)")  # Updated label
-    plt.ylabel("Mean Chirp Rate (MHz/µs)")  # Updated label for chirp rate
+    plt.ylabel("Mean Chirp Rate")
     plt.title("Top 5 Groups with Most Pulses (MHz Conversion & Highlighted Centers)")
 
     # Improve legend
     handles, labels = plt.gca().get_legend_handles_labels()
     unique_labels = dict(zip(labels, handles))
-    plt.legend(unique_labels.values(), unique_labels.keys(), title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
+    #plt.legend(unique_labels.values(), unique_labels.keys(), title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
 
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()

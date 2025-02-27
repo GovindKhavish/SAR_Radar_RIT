@@ -8,10 +8,10 @@ import numpy as np
 import polars as pl
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
-from scipy.signal import spectrogram
-from scipy.ndimage import binary_dilation, label, find_objects
 from sklearn.cluster import DBSCAN
-from scipy.signal import chirp
+from skimage.measure import label, regionprops
+from skimage.morphology import binary_dilation
+import math
 
 #-----------------------------------------------------------------------------------------
 import sys
@@ -100,14 +100,16 @@ plt.show()
 
 #------------------------ Chirp Formulation--------------------------------
 fs = 46918402.8  # Hz
-bw = 3e6  # Hz
-fc = 5e6  # Hz
-chirp_duration_us = 10  # microseconds
+bw = 4e6  # Hz
+fc = -5e6  # Hz
+chirp_duration_us = 30  # microseconds
 chirp_duration_s = chirp_duration_us * 1e-6  # seconds
 row_idx = 560  # Row index
+chirp_rate_fixed_bw = (bw / chirp_duration_s)  # Chirp rate Hz/s
 
-chirp_rate_fixed_bw = (bw / chirp_duration_s)  # Chirp rate
-print(f"Chirp Rate for fixed Bandwidth: {(chirp_rate_fixed_bw/1e6):.2f} MHz/s")
+bw_mhz = 3  # MHz
+chirp_rate_mhz_per_us = bw_mhz / chirp_duration_us
+print(f"Chirp Rate: {chirp_rate_mhz_per_us:.2f} MHz/us")
 
 # Generate chirp signal
 num_samples = int((chirp_duration_s) * fs) 
@@ -212,44 +214,81 @@ plt.ylabel('Frequency [MHz]')
 plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
-aa_filtered_clean = aa_db_filtered 
+# Assume aa_filtered_clean is the spectrogram in dB format
+aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
+# Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
+filtered_radar_data = aa * aa_filtered_clean
 
-gradient_x = np.gradient(aa_filtered_clean, axis=1)  
-gradient_y = np.gradient(aa_filtered_clean, axis=0)  
-gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+# Create a new array to store the filtered spectrogram data (keep values where CFAR mask is non-zero)
+filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
+filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
-slash_mask = (((gradient_x > 0.05) & (gradient_y < -0.05))  |  ((gradient_x > 0.05) & (gradient_y > 0.05))  )
-slash_mask = slash_mask & (gradient_magnitude > np.percentile(gradient_magnitude, 70))
+# # Visualize the filtered spectrogram
+# plt.figure(figsize=(10, 5))
+# plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
+# plt.title("Filtered Spectrogram (Only Extracted Values)")
+# plt.colorbar(label="Intensity")
+# plt.xlabel("Time (samples)")
+# plt.ylabel("Frequency (Hz)")
+# plt.tight_layout()
+# plt.show()
 
-dilated_mask = binary_dilation(slash_mask, structure=np.ones((6, 6)))
-chirp_candidates = np.where(dilated_mask, aa_filtered_clean, 0)
-min_length = 10
-labeled_mask, num_features = label(dilated_mask)
-slices = find_objects(labeled_mask)
-filtered_mask = np.zeros_like(dilated_mask, dtype=bool)
+# Apply binary dilation to widen the detected shapes (slashes)
+dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 
-for i, slice_obj in enumerate(slices, start=1):
-    component = (labeled_mask[slice_obj] == i)
-    y_coords, x_coords = np.where(component)
-    
-    if len(x_coords) > 0 and len(y_coords) > 0:
-        length = np.sqrt((x_coords.max() - x_coords.min())**2 + (y_coords.max() - y_coords.min())**2)
-        
-        if length >= min_length:
-            filtered_mask[slice_obj][component] = True
+# Label the connected components in the dilated binary mask
+labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 
-length_filtered_candidates = np.where(filtered_mask, chirp_candidates, 0)
+# Define angle thresholds (in degrees)
+min_angle = 30
+max_angle = 75
 
-# ----------------------------------------------------------------------------
+# Define minimum diagonal length (threshold, adjust as needed)
+min_diagonal_length = 15
+
+# Create an empty filtered mask for slashes
+filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
+
+# Filter based on angle, diagonal length, and aspect ratio for slashes
+for region in regionprops(labeled_mask):
+    # Get the bounding box of the region (ymin, ymax, xmin, xmax)
+    minr, minc, maxr, maxc = region.bbox
+
+    # Calculate the diagonal length (Euclidean distance between top-left and bottom-right corners)
+    diagonal_length = math.sqrt((maxr - minr)**2 + (maxc - minc)**2)
+
+    # Filter by diagonal length (skip small regions)
+    if diagonal_length < min_diagonal_length:
+        continue
+
+    # Calculate the slope of the diagonal line (between top-left and bottom-right)
+    slope = (maxr - minr) / (maxc - minc) if (maxc - minc) != 0 else 0
+
+    # Calculate the angle in degrees
+    angle = np.degrees(np.arctan(slope))
+
+    # Forward slash: 45° to 75°
+    # Backslash: -45° to -75° (or equivalently, 105° to 75°)
+    if (min_angle <= angle <= max_angle) or (180 - max_angle <= angle <= 180 - min_angle):
+        # Keep only slashes and exclude non-slash shapes
+        filtered_mask_slashes[labeled_mask == region.label] = True
+
+# Visualize the filtered mask (only the valid forward and backslash shapes)
+plt.figure(figsize=(10, 5))
+plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
+plt.title("Filtered Mask (Only Forward and Backslash Shapes)")
+plt.colorbar(label="Mask Value (True/False)")
+plt.tight_layout()
+plt.show()
+
 # Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
-time_freq_data = np.column_stack(np.where(length_filtered_candidates > 0))
+time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
 # DBSCAN Clustering
 clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
 # Map the frequency indices to MHz
 frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
 # Map the time indices to microseconds
 time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
-
 plt.figure(figsize=(10, 5))
 plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
 plt.title('DBSCAN Clustering of Chirp Signals')
@@ -291,7 +330,7 @@ for cluster_id in np.unique(clusters):
         # Time-freq points for cluster
         cluster_points = time_freq_data[clusters == cluster_id]
         # Time indices (2nd column)
-        time_indices = cluster_points[:, 1]  # Time axis (us)
+        time_indices = cc[cluster_points[:, 1]]  # Time axis (us)
         
         # Start and End time
         start_time_index = np.min(time_indices)
@@ -388,4 +427,5 @@ if len(isolated_pulses_data) > 0:
 
 else:
     print("No clusters detected, skipping the isolated I/Q data visualization.")
+
 
