@@ -235,6 +235,7 @@ def plot_top_5_pdw_scatter_with_summary_table(df, tolerance):
 
     # Convert center frequency from Hz to MHz (if it's not already in MHz)
     df["mean_center_frequency"] = df["mean_center_frequency"] / 1e6  # Convert Hz → MHz
+    df["mean_chirp_rate"] = df["mean_chirp_rate"] / 1e12 
 
     # Calculate total pulses for percentage calculation
     total_pulses = df["pulse_count"].sum()
@@ -297,6 +298,8 @@ def plot_top_5_pdw_scatter_with_summary_table(df, tolerance):
     # Labels and title
     plt.xlabel("Mean Center Frequency (MHz)")  # Updated label
     plt.ylabel("Mean Chirp Rate")
+    plt.title("Top 5 Groups with Most Pulses")
+    plt.ylabel("Mean Chirp Rate (MHz/µs)")  # Updated label for chirp rate
     plt.title("Top 5 Groups with Most Pulses (MHz Conversion & Highlighted Centers)")
 
     # Improve legend

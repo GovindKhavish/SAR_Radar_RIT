@@ -11,6 +11,7 @@ from sklearn.cluster import DBSCAN
 from skimage.measure import label, regionprops
 from skimage.morphology import binary_dilation
 import math
+from sklearn.linear_model import RANSACRegressor
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path
@@ -171,45 +172,84 @@ dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 # Label the connected components in the dilated binary mask
 labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 
-# Define angle thresholds (in degrees)
+# Define thresholds
 min_angle = 30
 max_angle = 75
-
-# Define minimum diagonal length (threshold, adjust as needed)
 min_diagonal_length = 20
+min_aspect_ratio = 1.5
 
-# Create an empty filtered mask for slashes
+# Create empty mask for valid slashes
 filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
 
-# Filter based on angle, diagonal length, and aspect ratio for slashes
+# Debug visualization
+plt.figure(figsize=(10, 5))
+plt.imshow(dilated_mask, cmap='gray', origin='lower', aspect='auto')
+plt.title("Detected Regions and Filtered Slashes")
+plt.xlabel("Time (samples)")
+plt.ylabel("Frequency (Hz)")
+
 for region in regionprops(labeled_mask):
-    # Get the bounding box of the region (ymin, ymax, xmin, xmax)
     minr, minc, maxr, maxc = region.bbox
+    diagonal_length = np.hypot(maxr - minr, maxc - minc)
 
-    # Calculate the diagonal length (Euclidean distance between top-left and bottom-right corners)
-    diagonal_length = math.sqrt((maxr - minr)**2 + (maxc - minc)**2)
-
-    # Filter by diagonal length (skip small regions)
+    # Skip small regions
     if diagonal_length < min_diagonal_length:
         continue
 
-    # Calculate the slope of the diagonal line (between top-left and bottom-right)
-    slope = (maxr - minr) / (maxc - minc) if (maxc - minc) != 0 else 0
+    # Compute width, height, and aspect ratio
+    width = maxc - minc
+    height = maxr - minr
+    aspect_ratio = max(width, height) / (min(width, height) + 1e-5)
 
-    # Calculate the angle in degrees
+    # Ensure elongated shape
+    if aspect_ratio < min_aspect_ratio:
+        continue
+
+    # Compute slope and angle
+    slope = height / width if width != 0 else float('inf')
     angle = np.degrees(np.arctan(slope))
+    angle = abs(angle)
 
-    # Forward slash: 45° to 75°
-    # Backslash: -45° to -75° (or equivalently, 105° to 75°)
-    if (min_angle <= angle <= max_angle) or (180 - max_angle <= angle <= 180 - min_angle):
-        # Keep only slashes and exclude non-slash shapes
-        filtered_mask_slashes[labeled_mask == region.label] = True
+    is_forward_slash = min_angle <= angle <= max_angle
+    is_backward_slash = (180 - max_angle) <= angle <= (180 - min_angle)
 
-# Visualize the filtered mask (only the valid forward and backslash shapes)
+    if not (is_forward_slash or is_backward_slash):
+        continue
+
+    # Extract pixel coordinates of the region
+    coords = np.array(region.coords)
+    print(coords)
+    y_vals, x_vals = coords[:, 0], coords[:, 1]
+
+    # Fit a RANSAC regression model
+    ransac = RANSACRegressor()
+    ransac.fit(x_vals.reshape(-1, 1), y_vals)  # Fit the model
+
+    # Get the R² score (how well the line fits)
+    r2_score = ransac.score(x_vals.reshape(-1, 1), y_vals)
+
+    # Set a lower R² threshold to allow slight variations
+    min_r2_threshold = 0.85
+
+    if r2_score < min_r2_threshold:
+        continue  # Skip non-straight shapes
+
+
+    # If passed all checks, add to final mask
+    filtered_mask_slashes[labeled_mask == region.label] = True
+
+    # Debug: Draw bounding box
+    plt.plot([minc, maxc, maxc, minc, minc], [minr, minr, maxr, maxr, minr], 'r-', linewidth=1)
+
+plt.tight_layout()
+plt.show()
+
+# Display final filtered mask
 plt.figure(figsize=(10, 5))
 plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
-plt.title("Filtered Mask (Only Forward and Backslash Shapes)")
-plt.colorbar(label="Mask Value (True/False)")
+plt.title("Final Filtered Mask (Only Straight Slashes)")
+plt.xlabel("Time (samples)")
+plt.ylabel("Frequency (Hz)")
 plt.tight_layout()
 plt.show()
 
