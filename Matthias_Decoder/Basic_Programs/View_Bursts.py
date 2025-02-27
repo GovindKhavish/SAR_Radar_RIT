@@ -106,7 +106,7 @@ l0file = sentinel1decoder.Level0File(inputfile)
 total_bursts = len(l0file.burst_info) 
 valid_burst_numbers = []
 
-for burst_number in range(51, total_bursts + 1):
+for burst_number in range(1, total_bursts + 1):
     metadata = l0file.get_burst_metadata(burst_number)
     if metadata['Signal Type'].unique()[0] == 0:
         valid_burst_numbers.append(burst_number)

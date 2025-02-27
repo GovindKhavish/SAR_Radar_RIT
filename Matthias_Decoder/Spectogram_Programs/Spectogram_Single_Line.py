@@ -11,6 +11,8 @@ from sklearn.cluster import DBSCAN
 from skimage.measure import label, regionprops
 from skimage.morphology import binary_dilation
 import math
+from sklearn.linear_model import RANSACRegressor
+
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path
@@ -27,15 +29,16 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Nazareth_Isreal\S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
 # filepath = r"//Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
-# filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
+#filename = '\s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/NorthernSea_Ireland/S1A_IW_RAW__0SDV_20200705T181540_20200705T181612_033323_03DC5B_2E3A.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
@@ -48,7 +51,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 3
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -69,7 +72,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1250
+idx_n = 438#437
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -91,8 +94,6 @@ ax.set_ylabel('Freq [MHz]', fontweight='bold')
 ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
-
-print(cc)
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
@@ -198,39 +199,94 @@ dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 # Label the connected components in the dilated binary mask
 labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 
-# Define angle thresholds (in degrees)
+from skimage.measure import regionprops, label
+from skimage.morphology import binary_dilation, skeletonize
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+
+# Define thresholds
 min_angle = 30
 max_angle = 75
-
-# Define minimum diagonal length (threshold, adjust as needed)
 min_diagonal_length = 20
+min_aspect_ratio = 1.5
 
-# Create an empty filtered mask for slashes
+# Create empty mask for valid slashes
 filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
 
-# Filter based on angle, diagonal length, and aspect ratio for slashes
+# Debug visualization
+plt.figure(figsize=(10, 5))
+plt.imshow(dilated_mask, cmap='gray', origin='lower', aspect='auto')
+plt.title("Detected Regions and Filtered Slashes")
+plt.xlabel("Time (samples)")
+plt.ylabel("Frequency (Hz)")
+
 for region in regionprops(labeled_mask):
-    # Get the bounding box of the region (ymin, ymax, xmin, xmax)
     minr, minc, maxr, maxc = region.bbox
+    diagonal_length = np.hypot(maxr - minr, maxc - minc)
 
-    # Calculate the diagonal length (Euclidean distance between top-left and bottom-right corners)
-    diagonal_length = math.sqrt((maxr - minr)**2 + (maxc - minc)**2)
-
-    # Filter by diagonal length (skip small regions)
+    # Skip small regions
     if diagonal_length < min_diagonal_length:
         continue
 
-    # Calculate the slope of the diagonal line (between top-left and bottom-right)
-    slope = (maxr - minr) / (maxc - minc) if (maxc - minc) != 0 else 0
+    # Compute width, height, and aspect ratio
+    width = maxc - minc
+    height = maxr - minr
+    aspect_ratio = max(width, height) / (min(width, height) + 1e-5)
 
-    # Calculate the angle in degrees
+    # Ensure elongated shape
+    if aspect_ratio < min_aspect_ratio:
+        continue
+
+    # Compute slope and angle
+    slope = height / width if width != 0 else float('inf')
     angle = np.degrees(np.arctan(slope))
+    angle = abs(angle)
 
-    # Forward slash: 45° to 75°
-    # Backslash: -45° to -75° (or equivalently, 105° to 75°)
-    if (min_angle <= angle <= max_angle) or (180 - max_angle <= angle <= 180 - min_angle):
-        # Keep only slashes and exclude non-slash shapes
-        filtered_mask_slashes[labeled_mask == region.label] = True
+    is_forward_slash = min_angle <= angle <= max_angle
+    is_backward_slash = (180 - max_angle) <= angle <= (180 - min_angle)
+
+    if not (is_forward_slash or is_backward_slash):
+        continue
+
+    # Extract pixel coordinates of the region
+    coords = np.array(region.coords)
+    print(coords)
+    y_vals, x_vals = coords[:, 0], coords[:, 1]
+
+    # Fit a RANSAC regression model
+    ransac = RANSACRegressor()
+    ransac.fit(x_vals.reshape(-1, 1), y_vals)  # Fit the model
+
+    # Get the R² score (how well the line fits)
+    r2_score = ransac.score(x_vals.reshape(-1, 1), y_vals)
+
+    # Set a lower R² threshold to allow slight variations
+    min_r2_threshold = 0.85
+
+    if r2_score < min_r2_threshold:
+        continue  # Skip non-straight shapes
+
+
+    # If passed all checks, add to final mask
+    filtered_mask_slashes[labeled_mask == region.label] = True
+
+    # Debug: Draw bounding box
+    plt.plot([minc, maxc, maxc, minc, minc], [minr, minr, maxr, maxr, minr], 'r-', linewidth=1)
+
+plt.tight_layout()
+plt.show()
+
+# Display final filtered mask
+plt.figure(figsize=(10, 5))
+plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
+plt.title("Final Filtered Mask (Only Straight Slashes)")
+plt.xlabel("Time (samples)")
+plt.ylabel("Frequency (Hz)")
+plt.tight_layout()
+plt.show()
+
+
 # ----------------------------------------------------------------------------
 # Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
 time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))

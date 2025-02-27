@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from skimage.measure import label, regionprops
 from skimage.morphology import binary_dilation
 import math
+from sklearn.linear_model import RANSACRegressor
 from sklearn.cluster import DBSCAN
 #-----------------------------------------------------------------------------------------
 import sys
@@ -31,13 +32,13 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
-# filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # Damascus VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
-# # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+# # # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
 # filename = '\s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
 
 # Whitesands VH Filepath
@@ -53,8 +54,8 @@ import sentinel1decoder
 # filename = '\s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 # Augsberg VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Augsburg_Germany\S1A_IW_RAW__0SDV_20190219T033540_20190219T033612_025993_02E57A_771F.SAFE"
-filename = '\s1a-iw-raw-s-vh-20190219t033540-20190219t033612-025993-02e57a.dat'
+# filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Augsburg_Germany\S1A_IW_RAW__0SDV_20190219T033540_20190219T033612_025993_02E57A_771F.SAFE"
+# filename = '\s1a-iw-raw-s-vh-20190219t033540-20190219t033612-025993-02e57a.dat'
 
 inputfile = filepath + filename
 
@@ -112,7 +113,6 @@ for selected_burst in burst_array:
         hori_avg = 30
         alarm_rate = 1e-9
 
-
         cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
 
         padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
@@ -138,55 +138,84 @@ for selected_burst in burst_array:
         # Label the connected components in the dilated binary mask
         labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 
-        # Define angle thresholds (in degrees)
+        # Define thresholds
         min_angle = 30
         max_angle = 75
+        min_diagonal_length = 20
+        min_aspect_ratio = 1.5
 
-        # Define minimum diagonal length (threshold, adjust as needed)
-        min_diagonal_length = 15
-
-        # Create an empty filtered mask for slashes
+        # Create empty mask for valid slashes
         filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
 
-        # Filter based on angle, diagonal length, and aspect ratio for slashes
+        # # Get the total number of detected regions
+        # num_regions = len(regionprops(labeled_mask))
+
+        # # Stop processing and skip to the next iteration if there are more than 3 regions
+        # if num_regions > 3:
+        #     continue  # Skip this iteration and move to the next one
+
+        # Main loop to process each region
         for region in regionprops(labeled_mask):
-            # Get the bounding box of the region (ymin, ymax, xmin, xmax)
             minr, minc, maxr, maxc = region.bbox
+            diagonal_length = np.hypot(maxr - minr, maxc - minc)
 
-            # Calculate the diagonal length (Euclidean distance between top-left and bottom-right corners)
-            diagonal_length = math.sqrt((maxr - minr)**2 + (maxc - minc)**2)
-
-            # Filter by diagonal length (skip small regions)
+            # Skip small regions
             if diagonal_length < min_diagonal_length:
                 continue
 
-            # Calculate the slope of the diagonal line (between top-left and bottom-right)
-            slope = (maxr - minr) / (maxc - minc) if (maxc - minc) != 0 else 0
+            # Compute width, height, and aspect ratio
+            width = maxc - minc
+            height = maxr - minr
+            aspect_ratio = max(width, height) / (min(width, height) + 1e-5)
 
-            # Calculate the angle in degrees
+            # Ensure elongated shape
+            if aspect_ratio < min_aspect_ratio:
+                continue
+
+            # Compute slope and angle
+            slope = height / width if width != 0 else float('inf')
             angle = np.degrees(np.arctan(slope))
+            angle = abs(angle)
 
-            # Forward slash: 45° to 75°
-            # Backslash: -45° to -75° (or equivalently, 105° to 75°)
-            if (min_angle <= angle <= max_angle) or (180 - max_angle <= angle <= 180 - min_angle):
-                # Keep only slashes and exclude non-slash shapes
-                filtered_mask_slashes[labeled_mask == region.label] = True
+            is_forward_slash = min_angle <= angle <= max_angle
+            is_backward_slash = (180 - max_angle) <= angle <= (180 - min_angle)
+
+            if not (is_forward_slash or is_backward_slash):
+                continue
+
+            # Extract pixel coordinates of the region
+            coords = np.array(region.coords)
+            y_vals, x_vals = coords[:, 0], coords[:, 1]
+
+            # Fit a RANSAC regression model
+            ransac = RANSACRegressor()
+            ransac.fit(x_vals.reshape(-1, 1), y_vals)
+
+            # Get the R² score (how well the line fits)
+            r2_score = ransac.score(x_vals.reshape(-1, 1), y_vals)
+
+            # Set a lower R² threshold to allow slight variations
+            min_r2_threshold = 0.85
+
+            if r2_score < min_r2_threshold:
+                continue  # Skip non-straight shapes
+
+            # If passed all checks, add to final mask
+            filtered_mask_slashes[labeled_mask == region.label] = True
+
         # ---------------------------------------------------------
         time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
 
         # DBSCAN
         if time_freq_data.shape[0] == 0:
-            #print(f"No targets detected for rangeline {idx_n}.")
-            continue  
+            continue  # Skip if no targets detected
         else: 
             dbscan = DBSCAN(eps=20, min_samples=5)
             clusters = dbscan.fit_predict(time_freq_data)
             num_clusters = len(np.unique(clusters[clusters != -1]))
-            #print(f"Number of clusters for rangeline {idx_n}: {num_clusters}")
 
             # ------------------ Skip Feature Extraction if More Than 2 Clusters -------------------
             if (num_clusters > 2 or num_clusters == 0):
-                #print(f"Skipping feature extraction for rangeline {idx_n} due to more than 2 clusters.")
                 continue
 
             # ------------------ Assign Global Pulse Numbers and Adjusted Times -------------------
@@ -194,7 +223,6 @@ for selected_burst in burst_array:
                 if cluster_id != -1:  
                     cluster_points = time_freq_data[clusters == cluster_id]
                     frequency_indices = bb[cluster_points[:, 0]]
-                    #iq_indices = cluster_points[:, 1]
                     time_indices = cc[cluster_points[:, 1]]
 
                     bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
@@ -204,9 +232,7 @@ for selected_burst in burst_array:
 
                     start_time = np.min(time_indices) / fs  
                     end_time = np.max(time_indices) / fs  
-                    #start_iq = np.min(iq_indices) 
-                    #end_iq = np.max(iq_indices)  
-                    
+
                     adjusted_start_time = start_time + slow_time_offset
                     adjusted_end_time = end_time + slow_time_offset
                     pulse_duration = adjusted_end_time - adjusted_start_time
@@ -227,10 +253,9 @@ for selected_burst in burst_array:
                         'adjusted_start_time': adjusted_start_time,
                         'adjusted_end_time': adjusted_end_time,
                         'pulse_duration': pulse_duration
-                        #'start_time_iq': np.min(start_iq),
-                        #'end_time_iq': np.max(end_iq)
                     })
-                    global_pulse_number += 1  
+                    global_pulse_number += 1
+
 
             # # ------------------ Process I/Q Data -------------------
             # NFFT = 256
@@ -272,13 +297,14 @@ for selected_burst in burst_array:
             # for pulse_number, data in isolated_pulses_data.items():
             #     if pulse_number not in global_isolated_pulses_data:
             #         global_isolated_pulses_data[pulse_number] = []
+
             #     global_isolated_pulses_data[pulse_number].append(data) 
 
 
 
 # ------------------ Database Storage -------------------
 # db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
-db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
+db_folder = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Databases"
 db_name = "pulse_characteristics_Mipur.db"
 db_path = os.path.join(db_folder, db_name)
 

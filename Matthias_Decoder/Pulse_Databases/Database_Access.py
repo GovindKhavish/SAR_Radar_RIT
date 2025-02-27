@@ -12,7 +12,7 @@ import Database_Functions  # Custom module for database handling and plotting
 #----------------------------------------------------------------------------------------#
 # Path to the database
 #db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
-db_folder = r"C:\Users\govin\OneDrive\Documents\Databases"
+db_folder = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Databases"
 db_name = "pulse_characteristics_Mipur.db"
 db_path = f"{db_folder}/{db_name}"
 
