@@ -170,16 +170,17 @@ def plot_pdw_scatter(df):
 
 #     root.mainloop()  # Run Tkinter event loop
 
-import matplotlib.pyplot as plt
-import numpy as np
 
 def plot_top_5_pdw_scatter_with_summary_table(df, tolerance=0.07):
     """Scatter plot of the top 5 groups with the highest pulse counts along with a summary table in the console."""
 
     print("Columns in DataFrame:", df.columns)  # Debugging step
 
-    # Convert center frequency from Hz to MHz
+    # Convert center frequency from Hz to MHz (if it's not already in MHz)
     df["mean_center_frequency"] = df["mean_center_frequency"] / 1e6  # Convert Hz → MHz
+
+    # Convert chirp rate from Hz/s to MHz/µs (if it's in Hz/s)
+    df["mean_chirp_rate"] = df["mean_chirp_rate"] / 1e12  # Convert Hz/s → MHz/µs
 
     # Calculate total pulses for percentage calculation
     total_pulses = df["pulse_count"].sum()
@@ -241,7 +242,7 @@ def plot_top_5_pdw_scatter_with_summary_table(df, tolerance=0.07):
 
     # Labels and title
     plt.xlabel("Mean Center Frequency (MHz)")  # Updated label
-    plt.ylabel("Mean Chirp Rate")
+    plt.ylabel("Mean Chirp Rate (MHz/µs)")  # Updated label for chirp rate
     plt.title("Top 5 Groups with Most Pulses (MHz Conversion & Highlighted Centers)")
 
     # Improve legend
