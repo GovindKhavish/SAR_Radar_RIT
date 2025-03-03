@@ -141,8 +141,8 @@ for selected_burst in burst_array:
         # Define thresholds
         min_angle = 30
         max_angle = 75
-        min_diagonal_length = 20
-        min_aspect_ratio = 1.5
+        min_diagonal_length = 15
+        min_aspect_ratio = 1
 
         # Create empty mask for valid slashes
         filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)

@@ -102,8 +102,8 @@ plt.show()
 #------------------------ Chirp Formulation--------------------------------
 fs = 46918402.8  # Hz
 bw = 4e6  # Hz
-fc = -5e6  # Hz
-chirp_duration_us = 30  # microseconds
+fc = -4.5e6  # Hz
+chirp_duration_us = 2  # microseconds
 chirp_duration_s = chirp_duration_us * 1e-6  # seconds
 row_idx = 560  # Row index
 chirp_rate_fixed_bw = (bw / chirp_duration_s)  # Chirp rate Hz/s

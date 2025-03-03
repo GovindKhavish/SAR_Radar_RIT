@@ -30,6 +30,12 @@ def count_rows_in_database(db_path):
     conn.close()
     return row_count
 
+def get_unique_burst_numbers(db_path):
+    conn = sqlite3.connect(db_path)
+    query = "SELECT DISTINCT burst_number FROM pulse_data ORDER BY burst_number"
+    df = pl.read_database(query, conn)
+    conn.close()
+    return df["burst_number"].to_list()
 # --------------------- PDWs Analysis ---------------------
 def bin_values(values, tolerance):
     """Bins values based on a % threshold, checking against all existing bins."""

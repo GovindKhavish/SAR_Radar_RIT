@@ -28,9 +28,9 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190219t033515-20190219t033547-025993-02e57a.dat'
@@ -49,7 +49,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 57
+selected_burst = 7
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -70,7 +70,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1250
+idx_n = 26
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -119,10 +119,10 @@ freq_size = aa.shape[0] # Time
 
 # Create 2D Mask
 #vert_guard,vert_avg,hori_Guard,hori_avg
-vert_guard = 50
-vert_avg = 50
-hori_guard = 50
-hori_avg = 100
+vert_guard = 12
+vert_avg = 30
+hori_guard = 10
+hori_avg = 30
 alarm_rate = 1e-9
 
 cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
@@ -166,11 +166,9 @@ filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 # plt.tight_layout()
 # plt.show()
 
-# Apply binary dilation to widen the detected shapes (slashes)
-dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 
 # Label the connected components in the dilated binary mask
-labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
+labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
 # Define thresholds
 min_angle = 30

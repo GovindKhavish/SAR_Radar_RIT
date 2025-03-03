@@ -29,8 +29,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
@@ -51,7 +51,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 57
+selected_burst = 17
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -72,7 +72,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 438#437
+idx_n = 322#437
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -208,8 +208,8 @@ from sklearn.linear_model import LinearRegression
 # Define thresholds
 min_angle = 30
 max_angle = 75
-min_diagonal_length = 20
-min_aspect_ratio = 1.5
+min_diagonal_length = 15
+min_aspect_ratio = 1
 
 # Create empty mask for valid slashes
 filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
@@ -267,7 +267,6 @@ for region in regionprops(labeled_mask):
     if r2_score < min_r2_threshold:
         continue  # Skip non-straight shapes
 
-
     # If passed all checks, add to final mask
     filtered_mask_slashes[labeled_mask == region.label] = True
 
@@ -285,7 +284,6 @@ plt.xlabel("Time (samples)")
 plt.ylabel("Frequency (Hz)")
 plt.tight_layout()
 plt.show()
-
 
 # ----------------------------------------------------------------------------
 # Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
