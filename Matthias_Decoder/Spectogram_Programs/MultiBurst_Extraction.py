@@ -132,11 +132,8 @@ for selected_burst in burst_array:
         filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
         filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
-        # Apply binary dilation to widen the detected shapes (slashes)
-        dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
-
         # Label the connected components in the dilated binary mask
-        labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
+        labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
         # Define thresholds
         min_angle = 30
@@ -145,7 +142,7 @@ for selected_burst in burst_array:
         min_aspect_ratio = 1
 
         # Create empty mask for valid slashes
-        filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
+        filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
 
         # # Get the total number of detected regions
         # num_regions = len(regionprops(labeled_mask))

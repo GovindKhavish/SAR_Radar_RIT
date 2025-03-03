@@ -52,7 +52,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 3
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -74,8 +74,8 @@ plt.show()
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 700
-end_idx = 800
+start_idx = 1200
+end_idx = 1220
 fs = 46918402.800000004  
 
 global_cluster_params = {}
@@ -147,20 +147,24 @@ for idx_n in range(start_idx, end_idx + 1):
     # plt.tight_layout()
     # plt.show()
 
-    # Apply binary dilation to widen the detected shapes (slashes)
-    dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
-
     # Label the connected components in the dilated binary mask
-    labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
+    labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
     # Define thresholds
     min_angle = 30
     max_angle = 75
     min_diagonal_length = 15
     min_aspect_ratio = 1
-
+    
     # Create empty mask for valid slashes
-    filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
+    filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
+
+    # Debug visualization
+    plt.figure(figsize=(10, 5))
+    plt.imshow(aa_filtered_clean, cmap='gray', origin='lower', aspect='auto')
+    plt.title("Detected Regions and Filtered Slashes")
+    plt.xlabel("Time (samples)")
+    plt.ylabel("Frequency (Hz)")
 
     for region in regionprops(labeled_mask):
         minr, minc, maxr, maxc = region.bbox

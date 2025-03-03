@@ -51,7 +51,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 17
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -72,7 +72,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 322#437
+idx_n = 1322#437
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -193,17 +193,8 @@ filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 # plt.tight_layout()
 # plt.show()
 
-# Apply binary dilation to widen the detected shapes (slashes)
-dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
-
 # Label the connected components in the dilated binary mask
-labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
-
-from skimage.measure import regionprops, label
-from skimage.morphology import binary_dilation, skeletonize
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
+labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
 # Define thresholds
 min_angle = 30
@@ -212,11 +203,11 @@ min_diagonal_length = 15
 min_aspect_ratio = 1
 
 # Create empty mask for valid slashes
-filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
+filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
 
 # Debug visualization
 plt.figure(figsize=(10, 5))
-plt.imshow(dilated_mask, cmap='gray', origin='lower', aspect='auto')
+plt.imshow(aa_filtered_clean, cmap='gray', origin='lower', aspect='auto')
 plt.title("Detected Regions and Filtered Slashes")
 plt.xlabel("Time (samples)")
 plt.ylabel("Frequency (Hz)")
