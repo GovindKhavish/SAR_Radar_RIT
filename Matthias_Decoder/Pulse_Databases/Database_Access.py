@@ -25,7 +25,7 @@ tolerance = 0.05
 # print(burst_num)
 
 # # View the database in a window and allow row selection
-# #Database_Functions.display_database_in_window(db_path)
+Database_Functions.display_database_in_window(db_path)
 Database_Functions.display_converted_database_in_window(db_path)
 # pdw_results = Database_Functions.pdw_analysis(db_path,tolerance)
 # #Database_Functions.plot_pdw_bins(pdw_results, tolerance)

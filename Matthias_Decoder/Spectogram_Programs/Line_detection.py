@@ -166,7 +166,8 @@ filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 # plt.tight_layout()
 # plt.show()
 
-
+# Apply binary dilation to widen the detected shapes (slashes)
+dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 # Label the connected components in the dilated binary mask
 labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
@@ -216,7 +217,6 @@ for region in regionprops(labeled_mask):
 
     # Extract pixel coordinates of the region
     coords = np.array(region.coords)
-    print(coords)
     y_vals, x_vals = coords[:, 0], coords[:, 1]
 
     # Fit a RANSAC regression model

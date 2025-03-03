@@ -6,8 +6,10 @@ from __future__ import division, print_function, unicode_literals # v3line15
 
 import numpy as np
 import polars as pl
+import pandas as pd
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from sklearn.cluster import DBSCAN
 from skimage.measure import label, regionprops
 from skimage.morphology import binary_dilation
@@ -76,9 +78,9 @@ plt.show()
 
 #------------------------ Intial Spectogram --------------------------------
 # Define parameters for the 5 chirp signals
-bw_list = [4e6, 6e6, 8e6, 10e6]  # Hz
-fc_list = [-2e6, -1e6, 0, 1e6]  # Hz
-chirp_durations = [5, 10, 15, 20]  # microseconds
+bw_list = [5e6, 6e6, 7e6, 8e6]  # Hz
+fc_list = [-4e6, -2e6, 2e6, 4e6]  # Hz
+chirp_durations = [10, 15, 20, 25]  # microseconds
 fs = 46918402.8  # Sampling frequency in Hz
 
 # Generate chirp signals
@@ -205,15 +207,9 @@ for idx_n in range(start_idx, end_idx + 1):
     # Label the connected components in the dilated binary mask
     labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 
-    from skimage.measure import regionprops, label
-    from skimage.morphology import binary_dilation, skeletonize
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from sklearn.linear_model import LinearRegression
-
     # Define thresholds
-    min_angle = 30
-    max_angle = 75
+    min_angle = 15
+    max_angle = 80
     min_diagonal_length = 10
     min_aspect_ratio = 1
 
@@ -361,10 +357,6 @@ for idx_n in range(start_idx, end_idx + 1):
 
             global_pulse_number += 1
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 def bin_values(values, tolerance):
     """Bins values based on a % threshold, checking against all existing bins."""

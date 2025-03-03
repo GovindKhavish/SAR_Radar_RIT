@@ -230,8 +230,8 @@ for selected_burst in burst_array:
                     time_span = np.max(time_indices) - np.min(time_indices)
                     chirp_rate = bandwidth / time_span if time_span != 0 else 0
 
-                    start_time = np.min(time_indices) / fs  
-                    end_time = np.max(time_indices) / fs  
+                    start_time = np.min(time_indices)
+                    end_time = np.max(time_indices)
 
                     adjusted_start_time = start_time + slow_time_offset
                     adjusted_end_time = end_time + slow_time_offset

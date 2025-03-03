@@ -74,8 +74,8 @@ plt.show()
 #------------------------ Apply CFAR filtering --------------------------------
 global_pulse_number = 1
 
-start_idx = 320
-end_idx = 325
+start_idx = 700
+end_idx = 800
 fs = 46918402.800000004  
 
 global_cluster_params = {}
