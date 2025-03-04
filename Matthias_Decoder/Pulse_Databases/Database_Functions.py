@@ -380,7 +380,7 @@ def display_converted_database_in_window(db_path):
         converted_row[columns.index("adjusted_start_time")] *= 1e6  # sec to µs
         converted_row[columns.index("adjusted_end_time")] *= 1e6  # sec to µs
         converted_row[columns.index("pulse_duration")] *= 1e6  # sec to µs
-        converted_row[columns.index("toa")] *= 1e6  # sec to µs
+        #converted_row[columns.index("toa")] *= 1e6  # sec to µs
         converted_rows.append(tuple(converted_row))
 
     # Create window
@@ -510,3 +510,117 @@ def plot_iq_data(iq_data, pulse_number):
 
     plt.tight_layout()
     plt.show()
+
+
+import sqlite3
+import numpy as np
+
+def analyze_tolerance(db_path):
+    """
+    Analyzes the tolerance of detected radar pulses by comparing them to known injected signals.
+    
+    Args:
+        db_path (str): Path to the SQLite database containing detected pulses.
+
+    Returns:
+        dict: A dictionary containing detected counts and percentage errors for each chirp.
+    """
+
+    # Known injected signals (ground truth)
+    injected_signals = {
+        1: {"bandwidth": 5.0, "center_frequency": -4.0, "pulse_duration": 10.0, "count": 116},
+        2: {"bandwidth": 6.0, "center_frequency": -2.0, "pulse_duration": 15.0, "count": 121},
+        3: {"bandwidth": 7.0, "center_frequency": 2.0, "pulse_duration": 20.0, "count": 108},
+        4: {"bandwidth": 8.0, "center_frequency": 4.0, "pulse_duration": 25.0, "count": 125},
+    }
+
+    # Connect to the database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Retrieve detected pulses from the database
+    cursor.execute("SELECT bandwidth, center_frequency, pulse_duration FROM pulse_data")
+    detected_data = cursor.fetchall()
+    conn.close()
+
+    # Convert to NumPy array for easier processing
+    detected_data = np.array(detected_data)
+
+    # Dictionary to store grouped detected signals
+    detected_signals = {key: {"bandwidth": [], "center_frequency": [], "pulse_duration": [], "count": 0} for key in injected_signals}
+
+    # Assign each detected pulse to the closest injected signal using Euclidean distance
+    for bw, fc, duration in detected_data:
+        closest_key = None
+        min_distance = float("inf")
+
+        for key, values in injected_signals.items():
+            # Compute Euclidean distance
+            distance = np.sqrt(
+                (bw - values["bandwidth"])**2 +
+                (fc - values["center_frequency"])**2 +
+                (duration - values["pulse_duration"])**2
+            )
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_key = key
+
+        # Assign to the closest injected chirp
+        if closest_key:
+            detected_signals[closest_key]["bandwidth"].append(bw)
+            detected_signals[closest_key]["center_frequency"].append(fc)
+            detected_signals[closest_key]["pulse_duration"].append(duration)
+            detected_signals[closest_key]["count"] += 1
+
+    # Compute percentage deviations
+    tolerance_results = {}
+
+    for key, values in detected_signals.items():
+        injected = injected_signals[key]
+
+        if values["count"] > 0:
+            avg_bw = np.mean(values["bandwidth"])
+            avg_fc = np.mean(values["center_frequency"])
+            avg_duration = np.mean(values["pulse_duration"])
+            detected_count = values["count"]
+
+            tolerance_results[key] = {
+                "detected_count": detected_count,
+                "bandwidth_error": abs(avg_bw - injected["bandwidth"]) / injected["bandwidth"] * 100,
+                "center_frequency_error": abs(avg_fc - injected["center_frequency"]) / abs(injected["center_frequency"]) * 100 if injected["center_frequency"] != 0 else abs(avg_fc) * 100,
+                "pulse_duration_error": abs(avg_duration - injected["pulse_duration"]) / injected["pulse_duration"] * 100,
+                "count_error": abs(detected_count - injected["count"]) / injected["count"] * 100
+            }
+        else:
+            tolerance_results[key] = {
+                "detected_count": 0,
+                "bandwidth_error": None,
+                "center_frequency_error": None,
+                "pulse_duration_error": None,
+                "count_error": None
+            }
+
+    return tolerance_results
+
+def print_tolerance_results(results):
+    print("\n" + "-" * 60)
+    print(f"{'Chirp':<6} {'Detected':<10} {'BW Err (%)':<12} {'FC Err (%)':<12} {'Dur Err (%)':<12} {'Count Err (%)':<12}")
+    print("-" * 60)
+
+    for key, errors in results.items():
+        detected_count = errors['detected_count']
+
+        if errors["bandwidth_error"] is not None:
+            bw_error = f"{errors['bandwidth_error']:.2f}"
+            fc_error = f"{errors['center_frequency_error']:.2f}"
+            dur_error = f"{errors['pulse_duration_error']:.2f}"
+            count_error = f"{errors['count_error']:.2f}"
+        else:
+            bw_error = fc_error = dur_error = count_error = "N/A"
+
+        print(f"{key:<6} {detected_count:<10} {bw_error:<12} {fc_error:<12} {dur_error:<12} {count_error:<12}")
+
+    print("-" * 60 + "\n")
+
+

@@ -125,47 +125,31 @@ for selected_burst in burst_array:
 
         # ------------------- Shape Detection ---------------------
         aa_filtered_clean = aa_db_filtered  
-        # Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
         filtered_radar_data = aa * aa_filtered_clean
-
-        # Create a new array to store the filtered spectrogram data (keep values where CFAR mask is non-zero)
-        filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
+        filtered_spectrogram_data = np.zeros_like(aa) 
         filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
-        # Label the connected components in the dilated binary mask
         labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
-        # Define thresholds
-        min_angle = 30
-        max_angle = 75
+        min_angle = 10
+        max_angle = 85
         min_diagonal_length = 15
         min_aspect_ratio = 1
 
-        # Create empty mask for valid slashes
         filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
 
-        # # Get the total number of detected regions
-        # num_regions = len(regionprops(labeled_mask))
-
-        # # Stop processing and skip to the next iteration if there are more than 3 regions
-        # if num_regions > 3:
-        #     continue  # Skip this iteration and move to the next one
-
-        # Main loop to process each region
+        # Main loop
         for region in regionprops(labeled_mask):
             minr, minc, maxr, maxc = region.bbox
             diagonal_length = np.hypot(maxr - minr, maxc - minc)
 
-            # Skip small regions
             if diagonal_length < min_diagonal_length:
                 continue
 
-            # Compute width, height, and aspect ratio
             width = maxc - minc
             height = maxr - minr
             aspect_ratio = max(width, height) / (min(width, height) + 1e-5)
 
-            # Ensure elongated shape
             if aspect_ratio < min_aspect_ratio:
                 continue
 
@@ -180,24 +164,25 @@ for selected_burst in burst_array:
             if not (is_forward_slash or is_backward_slash):
                 continue
 
-            # Extract pixel coordinates of the region
             coords = np.array(region.coords)
             y_vals, x_vals = coords[:, 0], coords[:, 1]
 
-            # Fit a RANSAC regression model
+            # RANSAC
             ransac = RANSACRegressor()
             ransac.fit(x_vals.reshape(-1, 1), y_vals)
 
-            # Get the R² score (how well the line fits)
-            r2_score = ransac.score(x_vals.reshape(-1, 1), y_vals)
+            # R^2 
+            try:
+                r2_score = ransac.score(x_vals.reshape(-1, 1), y_vals)
+            except ValueError:
+                continue  # R^2 calculation fails
 
-            # Set a lower R² threshold to allow slight variations
+            # Slight variations
             min_r2_threshold = 0.85
 
             if r2_score < min_r2_threshold:
-                continue  # Skip non-straight shapes
+                continue  
 
-            # If passed all checks, add to final mask
             filtered_mask_slashes[labeled_mask == region.label] = True
 
         # ---------------------------------------------------------
@@ -205,7 +190,7 @@ for selected_burst in burst_array:
 
         # DBSCAN
         if time_freq_data.shape[0] == 0:
-            continue  # Skip if no targets detected
+            continue  # No targets detected
         else: 
             dbscan = DBSCAN(eps=20, min_samples=5)
             clusters = dbscan.fit_predict(time_freq_data)
@@ -381,7 +366,7 @@ with conn:
     # -------------------- Insertion of Pulse Data --------------------
     for unique_key, params_list in global_cluster_params.items():
         for params in params_list:
-            # Standard unit conversion
+            # Standard unit
             bandwidth_hz = params["bandwidth"] * 1e6  # MHz to Hz
             center_frequency_hz = params["center_frequency"] * 1e6  # MHz to Hz
             chirp_rate_hz_per_sec = params["chirp_rate"] * 1e6 * 1e6  # MHz/µs to Hz/s
@@ -390,7 +375,6 @@ with conn:
             pulse_duration_sec = params["pulse_duration"] * 1e-6  # µs to sec
             toa_sec = params["adjusted_start_time"] * 1e-6  # µs to sec
 
-            # Insert data into pulse_data table, including burst number
             cursor.execute(
                 """INSERT OR REPLACE INTO pulse_data (
                     pulse_number, burst_number, bandwidth, center_frequency, chirp_rate,
