@@ -52,6 +52,7 @@ filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 
 inputfile = filepath + filename
+psize = 14
 
 l0file = sentinel1decoder.Level0File(inputfile)
 
@@ -72,10 +73,12 @@ radar_data = l0file.get_burst_data(selected_burst)
 
 plt.figure(figsize=(14, 6))
 plt.imshow(10 * np.log10(abs(radar_data[:, :])), aspect='auto', interpolation='none', origin='lower')
-plt.colorbar(label='Amplitude')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.title('Original Data')
+# plt.colorbar(label='Amplitude')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+plt.xlabel('Range Bin Index',fontsize = psize)
+plt.ylabel('Azimuth Bin Index',fontsize = psize)
+# plt.title('Original Data')
 plt.show()
 
 #------------------------ Intial Spectogram --------------------------------
@@ -120,10 +123,12 @@ for i, count in chirp_count.items():
 
 plt.figure(figsize=(14, 6))
 plt.imshow(10 * np.log10(abs(radar_data[:, :])), aspect='auto', interpolation='none', origin='lower')
-plt.colorbar(label='Amplitude')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.title('Original Data')
+#plt.colorbar(label='Amplitude')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+plt.xlabel('Range Bin Index',fontsize = psize)
+plt.ylabel('Azimuth Bin Index',fontsize = psize)
+#plt.title('Original Data')
 plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
