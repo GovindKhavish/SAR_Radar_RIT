@@ -82,11 +82,28 @@ plt.ylabel('Azimuth Bin Index',fontsize = psize)
 plt.show()
 
 #------------------------ Intial Spectogram --------------------------------
-# Define parameters for the 5 chirp signals
-bw_list = [5e6, 6e6, 7e6, 8e6]  # Hz
+# Changing Frequnecy
+bw_list = [5e6, 5e6, 5e6, 5e6]  # Hz
 fc_list = [-4e6, -2e6, 2e6, 4e6]  # Hz
-chirp_durations = [10, 15, 20, 25]  # microseconds
+chirp_durations = [20, 20, 20, 20]  # microseconds
 fs = 46918402.8  # Sampling frequency in Hz
+
+# # Changing Duration
+# bw_list = [5e6, 5e6, 5e6, 5e6]  # Hz
+# fc_list = [1e6, 1e6, 1e6, 1e6]  # Hz
+# chirp_durations = [10, 15, 20, 25]  # microseconds
+# fs = 46918402.8  # Sampling frequency in Hz
+
+# # Changing Bandwidth
+# bw_list = [5e6, 6e6, 7e6, 8e6]  # Hz
+# fc_list = [1e6, 1e6, 1e6, 1e6]  # Hz
+# chirp_durations = [20, 20, 20, 20]  # microseconds
+# fs = 46918402.8  # Sampling frequency in Hz
+
+# bw_list = [5e6, 6e6, 7e6, 8e6]  # Hz
+# fc_list = [-4e6, -2e6, 2e6, 4e6]  # Hz
+# chirp_durations = [10, 15, 20, 25]  # microseconds
+# fs = 46918402.8  # Sampling frequency in Hz
 
 # Generate chirp signals
 chirp_signals = []
@@ -361,8 +378,8 @@ for idx_n in range(start_idx, end_idx + 1):
 
 # ------------------ Database Storage -------------------
 # db_folder = r"/Users/khavishgovind/Documents/Git_Repos/SAR_Radar_RIT/Matthias_Decoder/Pulse_Databases"
-db_folder = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Databases"
-db_name = "pulse_characteristics_Burst_Simulator.db"
+db_folder = r"C:\Users\govin\OneDrive - University of Cape Town\Masters\Databases"
+db_name = "pulse_characteristics_Burst_Simulator_Frequnecy.db"
 db_path = os.path.join(db_folder, db_name)
 
 # Create folder if it doesn't exist

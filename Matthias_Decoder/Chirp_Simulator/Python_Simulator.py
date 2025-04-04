@@ -30,9 +30,9 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Nazareth_Isreal/S1A_IW_RAW__0SDV_20190224T034343_20190224T034416_026066_02E816_A557.SAFE"
 # filename = '/s1a-iw-raw-s-vh-20190224t034343-20190224t034416-026066-02e816.dat'
@@ -103,7 +103,7 @@ plt.show()
 fs = 46918402.8  # Hz
 bw = 5e6  # Hz
 fc = -4e6  # Hz
-chirp_duration_us = 10  # microseconds
+chirp_duration_us = 20  # microseconds
 chirp_duration_s = chirp_duration_us * 1e-6  # seconds
 row_idx = 560  # Row index
 chirp_rate_fixed_bw = (bw / chirp_duration_s)  # Chirp rate Hz/s
@@ -243,7 +243,7 @@ labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
 # Define thresholds
 min_angle = 5
 max_angle = 85
-min_diagonal_length = 10
+min_diagonal_length = 15
 min_aspect_ratio = 1
 
 # Create empty mask for valid slashes
