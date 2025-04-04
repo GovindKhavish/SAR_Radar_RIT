@@ -36,203 +36,202 @@ def get_unique_burst_numbers(db_path):
     df = pl.read_database(query, conn)
     conn.close()
     return df["burst_number"].to_list()
-# --------------------- PDWs Analysis ---------------------
-def bin_values(values, tolerance):
-    """Bins values based on a % threshold, checking against all existing bins."""
-    values = np.sort(values)
-    bins = [values[0]]  # Start with the first value
-    
-    for val in values[1:]:
-        # Check if value fits into any existing bin
-        fits_existing_bin = any(abs(val - b) / b <= tolerance for b in bins)
+
+
+# --------------------- Tolerance Analysis ---------------------
+def analyze_tolerance(db_path):
+    injected_signals = {
+        1: {"bandwidth": 5.0, "center_frequency": -4.0, "pulse_duration": 10.0, "chirp_rate": 0.5, "count": 116},
+        2: {"bandwidth": 6.0, "center_frequency": -2.0, "pulse_duration": 15.0, "chirp_rate": 0.4, "count": 121},
+        3: {"bandwidth": 7.0, "center_frequency": 2.0, "pulse_duration": 20.0, "chirp_rate": 0.35, "count": 108},
+        4: {"bandwidth": 8.0, "center_frequency": 4.0, "pulse_duration": 25.0, "chirp_rate": 0.32, "count": 125},
+    }
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT bandwidth, center_frequency, pulse_duration, chirp_rate FROM pulse_data")
+    detected_data = cursor.fetchall()
+    conn.close()
+
+    if not detected_data:
+        return {key: {"detected_count": 0, "bandwidth_error": None, "center_frequency_error": None, "pulse_duration_error": None, "chirp_rate_error": None, "count_error": None} for key in injected_signals}
+
+    detected_data = np.array(detected_data)
+    detected_signals = {key: {"bandwidth": [], "center_frequency": [], "pulse_duration": [], "chirp_rate": [], "count": 0} for key in injected_signals}
+
+    for bw, fc, duration, chirp_rate in detected_data:
+        closest_key = None
+        min_distance = float("inf")
+
+        for key, values in injected_signals.items():
+            distance = np.sqrt(
+                (bw - values["bandwidth"])**2 +
+                (fc - values["center_frequency"])**2 +
+                (duration - values["pulse_duration"])**2
+            )
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_key = key
+
+        if closest_key:
+            detected_signals[closest_key]["bandwidth"].append(bw)
+            detected_signals[closest_key]["center_frequency"].append(fc)
+            detected_signals[closest_key]["pulse_duration"].append(duration)
+            detected_signals[closest_key]["chirp_rate"].append(chirp_rate)
+            detected_signals[closest_key]["count"] += 1
+
+    tolerance_results = {}
+
+    for key, values in detected_signals.items():
+        injected = injected_signals[key]
         
-        if not fits_existing_bin:  # Create a new bin only if it doesn't fit anywhere
-            bins.append(val)
+        if values["count"] > 0:
+            avg_bw = np.mean(values["bandwidth"])
+            avg_fc = np.mean(values["center_frequency"])
+            avg_duration = np.mean(values["pulse_duration"])
+            avg_chirp_rate = np.mean(values["chirp_rate"])
+            detected_count = values["count"]
+            
+            tolerance_results[key] = {
+                "detected_count": detected_count,
+                "bandwidth_error": abs(avg_bw - injected["bandwidth"]) / injected["bandwidth"] * 100,
+                "center_frequency_error": abs(avg_fc - injected["center_frequency"]) / abs(injected["center_frequency"]) * 100 if injected["center_frequency"] != 0 else abs(avg_fc) * 100,
+                "pulse_duration_error": abs(avg_duration - injected["pulse_duration"]) / injected["pulse_duration"] * 100,
+                "chirp_rate_error": abs(avg_chirp_rate - injected["chirp_rate"]) / injected["chirp_rate"] * 100,
+                "count_error": abs(detected_count - injected["count"]) / injected["count"] * 100
+            }
+        else:
+            tolerance_results[key] = {
+                "detected_count": 0,
+                "bandwidth_error": None,
+                "center_frequency_error": None,
+                "pulse_duration_error": None,
+                "chirp_rate_error": None,
+                "count_error": None
+            }
     
-    return np.digitize(values, bins, right=True)
+    return tolerance_results
 
+def print_tolerance_results(results):
+    print("\n" + "-" * 80)
+    print(f"{'Chirp':<6} {'Detected':<10} {'BW Err (%)':<12} {'FC Err (%)':<12} {'Dur Err (%)':<12} {'Chirp Err (%)':<12} {'Count Err (%)':<12}")
+    print("-" * 80)
 
-def pdw_analysis(db_path, tolerance):
-    # Connect to the database and load data
+    for key, errors in results.items():
+        detected_count = errors['detected_count']
+
+        if errors["bandwidth_error"] is not None:
+            bw_error = f"{errors['bandwidth_error']:.2f}"
+            fc_error = f"{errors['center_frequency_error']:.2f}"
+            dur_error = f"{errors['pulse_duration_error']:.2f}"
+            chirp_error = f"{errors['chirp_rate_error']:.2f}"
+            count_error = f"{errors['count_error']:.2f}"
+        else:
+            bw_error = fc_error = dur_error = chirp_error = count_error = "N/A"
+
+        print(f"{key:<6} {detected_count:<10} {bw_error:<12} {fc_error:<12} {dur_error:<12} {chirp_error:<12} {count_error:<12}")
+
+    print("-" * 80 + "\n")
+
+# --------------------- PDWs Analysis ---------------------
+def bin_values(frequencies, chirp_rates, freq_tolerance, chirp_tolerance):
+    """Bins values based on both center frequency and chirp rate tolerances."""
+    bins = [(frequencies[0], chirp_rates[0])]  
+    bin_indices = np.zeros(len(frequencies), dtype=int)  
+    for i in range(len(frequencies)):
+        freq, chirp = frequencies[i], chirp_rates[i]
+        found_bin = False
+        
+        for j, (bin_freq, bin_chirp) in enumerate(bins):
+            if (abs(freq - bin_freq) / bin_freq <= freq_tolerance and
+                abs(chirp - bin_chirp) / bin_chirp <= chirp_tolerance):
+                bin_indices[i] = j  
+                found_bin = True
+                break
+        
+        if not found_bin:
+            bins.append((freq, chirp))  
+            bin_indices[i] = len(bins) - 1 
+
+    return bin_indices
+
+def pdw_analysis(db_path, freq_tolerance, chirp_tolerance):
     conn = sqlite3.connect(db_path)
     query = "SELECT pulse_number, center_frequency, chirp_rate, pulse_duration FROM pulse_data"
     df = pd.read_sql_query(query, conn)
     conn.close()
 
-    # Apply binning to group center frequency and chirp rate based on tolerance
-    df["center_freq_bin"] = bin_values(df["center_frequency"].values, tolerance)
-    df["chirp_rate_bin"] = bin_values(df["chirp_rate"].values, tolerance)
+    df["bin"] = bin_values(df["center_frequency"].values, df["chirp_rate"].values, freq_tolerance, chirp_tolerance)
 
-    # Group by these bins and calculate required statistics
-    grouped_df = df.groupby(["center_freq_bin", "chirp_rate_bin"]).agg(
+    grouped_df = df.groupby("bin").agg(
         pulse_count=("pulse_number", "count"),
         mean_pulse_duration=("pulse_duration", "mean"),
         min_pulse_duration=("pulse_duration", "min"),
         max_pulse_duration=("pulse_duration", "max"),
-        mean_center_frequency=("center_frequency", "mean"),  # Added mean center frequency
-        mean_chirp_rate=("chirp_rate", "mean")               # Added mean chirp rate
+        mean_center_frequency=("center_frequency", "mean"),
+        mean_chirp_rate=("chirp_rate", "mean")
     ).reset_index()
 
-    # Return the grouped DataFrame
     return grouped_df
 
-def plot_pdw_bins(df, tolerance):
-    """Plot rectangular bins for Center Frequency vs. Chirp Rate."""
-    
-    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count"]
-    for col in expected_columns:
-        if col not in df.columns:
-            raise ValueError(f"Missing expected column: {col}")
-
-    plt.figure(figsize=(8, 6))
-    ax = plt.gca()
-
-    # Define color mapping for unique bins
-    unique_bins = df["center_freq_bin"].unique()
-    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
-    color_map = dict(zip(unique_bins, colors))
-
-    for _, row in df.iterrows():
-        # Compute bin ranges with 5% tolerance
-        freq_min = row["center_freq_bin"] * (1 - tolerance)
-        freq_max = row["center_freq_bin"] * (1 + tolerance)
-        chirp_min = row["chirp_rate_bin"] * (1 - tolerance)
-        chirp_max = row["chirp_rate_bin"] * (1 + tolerance)
-        
-        # Create a rectangle
-        rect = patches.Rectangle(
-            (freq_min, chirp_min),  # Bottom-left corner
-            freq_max - freq_min,    # Width (frequency range)
-            chirp_max - chirp_min,  # Height (chirp rate range)
-            linewidth=1.5,
-            edgecolor=color_map[row["center_freq_bin"]],
-            facecolor="none",
-            linestyle="--",
-            label=f'Bin {row["center_freq_bin"]}' if row["center_freq_bin"] not in plt.gca().get_legend_handles_labels()[1] else ""
-        )
-        ax.add_patch(rect)
-
-    # Labels and title
-    plt.xlabel("Center Frequency (Hz)")
-    plt.ylabel("Chirp Rate (Hz/s)")
-    plt.title("Binned Center Frequency vs Chirp Rate (with Tolerance)")
-    plt.grid(True, linestyle="--", alpha=0.5)
-    plt.legend(title="Center Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
-    plt.xlim(df["center_freq_bin"].min() * 0.95, df["center_freq_bin"].max() * 1.05)
-    plt.ylim(df["chirp_rate_bin"].min() * 0.95, df["chirp_rate_bin"].max() * 1.05)
-    plt.show()
-
-
-
 def plot_pdw_scatter(df):
-    """Scatter plot of Center Frequency vs. Chirp Rate using the actual values."""
-
-    # Ensure correct column names
-    expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count", "mean_center_frequency", "mean_chirp_rate"]
+    expected_columns = ["bin", "pulse_count", "mean_center_frequency", "mean_chirp_rate"]
     for col in expected_columns:
         if col not in df.columns:
             raise ValueError(f"Missing expected column: {col}")
 
     plt.figure(figsize=(8, 6))
 
-    # Define color mapping for unique frequency bins
-    unique_bins = df["center_freq_bin"].unique()
-    color_map = plt.cm.get_cmap("tab10", len(unique_bins))  # Using a predefined colormap
+    unique_bins = df["bin"].unique()
+    color_map = plt.cm.get_cmap("tab10", len(unique_bins))  
 
-    # Scatter plot with actual center frequency and chirp rate
     for i, bin_value in enumerate(unique_bins):
-        # Filter data by bin
-        bin_data = df[df["center_freq_bin"] == bin_value]
-        # Plot data for each bin with a unique color
+        bin_data = df[df["bin"] == bin_value]
+        
         plt.scatter(
-            bin_data["mean_center_frequency"] / 1e6,  # Convert center frequency to MHz
-            bin_data["mean_chirp_rate"]/ 1e12,        # Convert chirp rate to MHz/us
-            s=bin_data["pulse_count"] * 5,            # Scale marker size by pulse count
-            color=color_map(i),                       # Use the color from colormap
-            alpha=0.6
+            bin_data["mean_center_frequency"] / 1e6,  # MHz
+            bin_data["mean_chirp_rate"] / 1e12,       # MHz/us
+            color=color_map(i),                       
+            alpha=0.6, label=f"Bin {bin_value}"
+        )
+        
+        center_freq = bin_data["mean_center_frequency"].iloc[0] / 1e6  # MHz
+        chirp_rate = bin_data["mean_chirp_rate"].iloc[0] / 1e12  # MHz/us
+        plt.scatter(
+            center_freq, chirp_rate,
+            color=color_map(i), marker="X", s=100, label=f"Center of Bin {bin_value}"
         )
 
-    # Labels and title
     plt.xlabel("Center Frequency (MHz)")
     plt.ylabel("Chirp Rate (MHz/us)")
     plt.title("Center Frequency vs Chirp Rate (Grouped by Tolerance)")
     plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend(loc="upper right", fontsize=8)
     plt.show()
 
 
+def display_top_bins(df):
+    expected_columns = ["bin", "pulse_count", "mean_center_frequency", "mean_chirp_rate", "mean_pulse_duration"]
+    for col in expected_columns:
+        if col not in df.columns:
+            raise ValueError(f"Missing expected column: {col}")
 
+    total_pulses = df["pulse_count"].sum()  # Total pulse count across all bins
+    top_bins = df.sort_values(by="pulse_count", ascending=False).head(5)
 
+    print("Top 5 Bins with the Most Pulses:")
+    for index, row in top_bins.iterrows():
+        pulse_percentage = (row['pulse_count'] / total_pulses) * 100  # Calculate percentage of total pulses
+        print(f"\nBin {row['bin']}:")
+        print(f"  - Pulse Count: {row['pulse_count']}")
+        print(f"  - Percentage of Total Pulses: {pulse_percentage:.2f}%")
+        print(f"  - Mean Center Frequency: {row['mean_center_frequency'] / 1e6:.2f} MHz")
+        print(f"  - Mean Chirp Rate: {row['mean_chirp_rate'] / 1e12:.2f} MHz/us")
+        print(f"  - Mean Duration: {row['mean_pulse_duration'] * 1e6:.2f} µs")  # Convert to microseconds
 
-# def plot_top_5_pdw_scatter_with_table(df):
-#     """Scatter plot of the top 5 bins with the highest pulse counts along with a summary table in a Tkinter window."""
-
-#     print("Columns in DataFrame:", df.schema)  # Debugging step
-
-#     # Select the top 5 bins with the highest pulse counts
-#     top_5_df = df.sort("pulse_count", descending=True).limit(5)
-
-#     # Ensure correct column names
-#     expected_columns = ["center_freq_bin", "chirp_rate_bin", "pulse_count", 
-#                         "mean_pulse_duration", "min_pulse_duration", "max_pulse_duration"]
-#     for col in expected_columns:
-#         if col not in top_5_df.columns:
-#             raise ValueError(f"Missing expected column: {col}")
-
-#     # --------- Create a Tkinter Window for the Table ---------
-#     root = tk.Tk()
-#     root.title("Top 5 Bins Summary")
-
-#     frame = tk.Frame(root)
-#     frame.pack(fill="both", expand=True)
-
-#     # Treeview widget with scrollbar
-#     tree = ttk.Treeview(frame, columns=expected_columns, show="headings")
-#     vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-#     hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
-#     tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-
-#     vsb.pack(side="right", fill="y")
-#     hsb.pack(side="bottom", fill="x")
-#     tree.pack(side="left", fill="both", expand=True)
-
-#     # Define column headings
-#     for col in expected_columns:
-#         tree.heading(col, text=col)
-#         tree.column(col, width=120)
-
-#     # Insert data into treeview
-#     for row in top_5_df.iter_rows(named=True):
-#         tree.insert("", "end", values=[row[col] for col in expected_columns])
-
-#     # --------- Plot Scatter ---------
-#     plt.figure(figsize=(8, 6))
-
-#     # Define color mapping for unique frequency bins
-#     unique_bins = top_5_df["center_freq_bin"].unique().to_list()
-#     colors = plt.cm.viridis(np.linspace(0, 1, len(unique_bins)))
-#     color_map = dict(zip(unique_bins, colors))
-
-#     # Scatter plot with pulse count as marker size
-#     for row in top_5_df.iter_rows(named=True):
-#         plt.scatter(
-#             row["center_freq_bin"],
-#             row["chirp_rate_bin"],
-#             s=row["pulse_count"] * 10,  # Scale marker size by pulse count
-#             color=color_map[row["center_freq_bin"]],
-#             alpha=0.75,
-#             label=f'Bin {row["center_freq_bin"]}'
-#         )
-
-#     # Labels and title
-#     plt.xlabel("Center Frequency Bin")
-#     plt.ylabel("Chirp Rate Bin")
-#     plt.title("Top 5 Bins with Most Pulses")
-#     plt.legend(title="Top 5 Frequency Groups", fontsize=8, loc="upper right", bbox_to_anchor=(1.3, 1))
-#     plt.grid(True, linestyle="--", alpha=0.5)
-#     plt.show()
-
-#     root.mainloop()  # Run Tkinter event loop
-
+    return top_bins
 
 def plot_top_5_pdw_scatter_with_summary_table(df, tolerance):
     """Scatter plot of the top 5 groups with the highest pulse counts along with a summary table in the console."""
@@ -512,115 +511,5 @@ def plot_iq_data(iq_data, pulse_number):
     plt.show()
 
 
-import sqlite3
-import numpy as np
-
-def analyze_tolerance(db_path):
-    """
-    Analyzes the tolerance of detected radar pulses by comparing them to known injected signals.
-    
-    Args:
-        db_path (str): Path to the SQLite database containing detected pulses.
-
-    Returns:
-        dict: A dictionary containing detected counts and percentage errors for each chirp.
-    """
-
-    # Known injected signals (ground truth)
-    injected_signals = {
-        1: {"bandwidth": 5.0, "center_frequency": -4.0, "pulse_duration": 10.0, "count": 116},
-        2: {"bandwidth": 6.0, "center_frequency": -2.0, "pulse_duration": 15.0, "count": 121},
-        3: {"bandwidth": 7.0, "center_frequency": 2.0, "pulse_duration": 20.0, "count": 108},
-        4: {"bandwidth": 8.0, "center_frequency": 4.0, "pulse_duration": 25.0, "count": 125},
-    }
-
-    # Connect to the database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    # Retrieve detected pulses from the database
-    cursor.execute("SELECT bandwidth, center_frequency, pulse_duration FROM pulse_data")
-    detected_data = cursor.fetchall()
-    conn.close()
-
-    # Convert to NumPy array for easier processing
-    detected_data = np.array(detected_data)
-
-    # Dictionary to store grouped detected signals
-    detected_signals = {key: {"bandwidth": [], "center_frequency": [], "pulse_duration": [], "count": 0} for key in injected_signals}
-
-    # Assign each detected pulse to the closest injected signal using Euclidean distance
-    for bw, fc, duration in detected_data:
-        closest_key = None
-        min_distance = float("inf")
-
-        for key, values in injected_signals.items():
-            # Compute Euclidean distance
-            distance = np.sqrt(
-                (bw - values["bandwidth"])**2 +
-                (fc - values["center_frequency"])**2 +
-                (duration - values["pulse_duration"])**2
-            )
-
-            if distance < min_distance:
-                min_distance = distance
-                closest_key = key
-
-        # Assign to the closest injected chirp
-        if closest_key:
-            detected_signals[closest_key]["bandwidth"].append(bw)
-            detected_signals[closest_key]["center_frequency"].append(fc)
-            detected_signals[closest_key]["pulse_duration"].append(duration)
-            detected_signals[closest_key]["count"] += 1
-
-    # Compute percentage deviations
-    tolerance_results = {}
-
-    for key, values in detected_signals.items():
-        injected = injected_signals[key]
-
-        if values["count"] > 0:
-            avg_bw = np.mean(values["bandwidth"])
-            avg_fc = np.mean(values["center_frequency"])
-            avg_duration = np.mean(values["pulse_duration"])
-            detected_count = values["count"]
-
-            tolerance_results[key] = {
-                "detected_count": detected_count,
-                "bandwidth_error": abs(avg_bw - injected["bandwidth"]) / injected["bandwidth"] * 100,
-                "center_frequency_error": abs(avg_fc - injected["center_frequency"]) / abs(injected["center_frequency"]) * 100 if injected["center_frequency"] != 0 else abs(avg_fc) * 100,
-                "pulse_duration_error": abs(avg_duration - injected["pulse_duration"]) / injected["pulse_duration"] * 100,
-                "count_error": abs(detected_count - injected["count"]) / injected["count"] * 100
-            }
-        else:
-            tolerance_results[key] = {
-                "detected_count": 0,
-                "bandwidth_error": None,
-                "center_frequency_error": None,
-                "pulse_duration_error": None,
-                "count_error": None
-            }
-
-    return tolerance_results
-
-def print_tolerance_results(results):
-    print("\n" + "-" * 60)
-    print(f"{'Chirp':<6} {'Detected':<10} {'BW Err (%)':<12} {'FC Err (%)':<12} {'Dur Err (%)':<12} {'Count Err (%)':<12}")
-    print("-" * 60)
-
-    for key, errors in results.items():
-        detected_count = errors['detected_count']
-
-        if errors["bandwidth_error"] is not None:
-            bw_error = f"{errors['bandwidth_error']:.2f}"
-            fc_error = f"{errors['center_frequency_error']:.2f}"
-            dur_error = f"{errors['pulse_duration_error']:.2f}"
-            count_error = f"{errors['count_error']:.2f}"
-        else:
-            bw_error = fc_error = dur_error = count_error = "N/A"
-
-        print(f"{key:<6} {detected_count:<10} {bw_error:<12} {fc_error:<12} {dur_error:<12} {count_error:<12}")
-
-    print("-" * 60 + "\n")
 
 

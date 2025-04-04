@@ -44,6 +44,7 @@ filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 # filename = '/s1a-iw-raw-s-vh-20200705t181540-20200705t181612-033323-03dc5b.dat'
 
 inputfile = filepath + filename
+psize = 14
 
 l0file = sentinel1decoder.Level0File(inputfile)
 
@@ -72,7 +73,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1322#437
+idx_n = 1472#437#1220
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -89,9 +90,9 @@ fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
 scale = 'dB'
 aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
-ax.set_xlabel('Time [us]', fontweight='bold')
-ax.set_ylabel('Freq [MHz]', fontweight='bold')
-ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
+ax.set_xlabel('Time [us]',fontsize = psize)
+ax.set_ylabel('Freq [MHz]',fontsize = psize)
+#ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.pause(0.1)
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
@@ -168,8 +169,8 @@ aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 plt.figure(figsize=(10, 5))
 plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
 plt.title('Targets---')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
+plt.xlabel('Time [us]',fontsize = psize)
+plt.ylabel('Frequency [MHz]',fontsize = psize)
 plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
@@ -208,9 +209,9 @@ filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
 # Debug visualization
 plt.figure(figsize=(10, 5))
 plt.imshow(aa_filtered_clean, cmap='gray', origin='lower', aspect='auto')
-plt.title("Detected Regions and Filtered Slashes")
-plt.xlabel("Time (samples)")
-plt.ylabel("Frequency (Hz)")
+#plt.title("Detected Regions and Filtered Slashes")
+plt.xlabel("Time (us)",fontsize = psize)
+plt.ylabel("Frequency (MHz)",fontsize = psize)
 
 for region in regionprops(labeled_mask):
     minr, minc, maxr, maxc = region.bbox
@@ -242,7 +243,6 @@ for region in regionprops(labeled_mask):
 
     # Extract pixel coordinates of the region
     coords = np.array(region.coords)
-    print(coords)
     y_vals, x_vals = coords[:, 0], coords[:, 1]
 
     # Fit a RANSAC regression model
@@ -271,8 +271,8 @@ plt.show()
 plt.figure(figsize=(10, 5))
 plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
 plt.title("Final Filtered Mask (Only Straight Slashes)")
-plt.xlabel("Time (samples)")
-plt.ylabel("Frequency (Hz)")
+plt.xlabel("Time (samples)",fontsize = psize)
+plt.ylabel("Frequency (Hz)",fontsize = psize)
 plt.tight_layout()
 plt.show()
 
@@ -289,8 +289,8 @@ time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
 plt.figure(figsize=(10, 5))
 plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
 plt.title('DBSCAN Clustering of Chirp Signals')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
+plt.xlabel('Time [us]',fontsize = psize)
+plt.ylabel('Frequency [MHz]',fontsize = psize)
 plt.colorbar(label='Cluster ID')
 plt.tight_layout()
 plt.show()
@@ -298,10 +298,10 @@ plt.show()
 # Plot the target map (filtered spectrogram)
 plt.figure(figsize=(10, 5))
 plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
-plt.title('Targets')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.title('Targets')
+plt.xlabel('Time [us]',fontsize = psize)
+plt.ylabel('Frequency [MHz]',fontsize = psize)
+#plt.colorbar(label='Filter Amplitude')
 
 for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
     cluster_points = time_freq_data[clusters == cluster]
@@ -311,7 +311,7 @@ for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noi
 
 # Show the plot with the target map and cluster points
 plt.tight_layout()
-plt.legend()
+plt.legend(fontsize = psize)
 plt.show(block=True)
 plt.show()
 # Number of clusters (excluding noise)
@@ -411,7 +411,7 @@ if len(isolated_pulses_data) > 0:
         axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
         axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
         
-        axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
+        #axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
         axes[idx].set_xlabel("Index")
         axes[idx].set_ylabel("Amplitude")
         axes[idx].legend()
