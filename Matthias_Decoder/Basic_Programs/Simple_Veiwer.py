@@ -92,7 +92,7 @@ sent1_meta = l0file.packet_metadata
 bust_info = l0file.burst_info
 sent1_ephe = l0file.ephemeris
 
-selected_burst = 13
+selected_burst = 57
 selection = l0file.get_burst_metadata(selected_burst)
 
 while selection['Signal Type'].unique()[0] != 0:
@@ -103,12 +103,20 @@ headline = f'Sentinel-1 (burst {selected_burst}): '
 
 radar_data = l0file.get_burst_data(selected_burst)
 
+psize = 16
 plt.figure(figsize=(14, 6))
 plt.imshow(10 * np.log10(abs(radar_data[:, :])), aspect='auto', interpolation='none', origin='lower')
-plt.colorbar(label='Amplitude')
-plt.xlabel('Fast Time')
-plt.ylabel('Slow Time')
-plt.title('Original Data')
+#plt.colorbar(label='Amplitude (dB)')
+# plt.xlabel('Fast Time')
+# plt.ylabel('Slow Time')
+plt.xlabel('Range Bin Index', fontsize=psize)
+plt.ylabel('Azimuth Bin Index', fontsize=psize)
+
+# Increase the size of axis numbers
+plt.tick_params(axis='both', which='major', labelsize=psize)
+
+#plt.title('Original Data')
 plt.show()
+
 
 

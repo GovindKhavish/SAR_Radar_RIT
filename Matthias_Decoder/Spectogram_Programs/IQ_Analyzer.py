@@ -8,9 +8,12 @@ import numpy as np
 import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
+from scipy.signal import hilbert
+from scipy.signal import welch
 from skimage.measure import label, regionprops
 from skimage.morphology import binary_dilation
 import math
+
 from sklearn.linear_model import RANSACRegressor
 
 #-----------------------------------------------------------------------------------------
@@ -73,7 +76,7 @@ plt.show()
 
 #------------------------ Apply CFAR filtering --------------------------------
 # Spectrogram plot
-idx_n = 1250#437#1220
+idx_n = 1250#1250#1472#437#1220
 fs = 46918402.800000004
 radar_section = radar_data[idx_n, :]
 
@@ -90,11 +93,11 @@ fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
 scale = 'dB'
 aa, bb, cc, dd = ax.specgram(radar_data[idx_n,:], NFFT=256, Fs=fs/1e6,Fc=None, detrend=None, window=np.hanning(256), scale=scale,noverlap=200, cmap='Greys')
-ax.set_xlabel('Time [us]',fontsize = psize)
-ax.set_ylabel('Freq [MHz]',fontsize = psize)
-#ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
-plt.tight_layout()
-plt.pause(0.1)
+# ax.set_xlabel('Time [us]',fontsize = psize)
+# ax.set_ylabel('Freq [MHz]',fontsize = psize)
+# #ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
+# plt.tight_layout()
+# plt.pause(0.1)
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
 def adaptive_threshold(array, factor=2):
     mean_value = np.mean(array)
@@ -106,15 +109,15 @@ def adaptive_threshold(array, factor=2):
 
 threshold,aa = adaptive_threshold(aa)
 
-# Plot the filtered spectrogram with the adaptive threshold applied
-plt.figure(figsize=(10, 5))
-plt.imshow(np.flipud(aa), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]]) 
-plt.title('Filtered Spectrograms')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
-plt.tight_layout()
-plt.show()
+# # Plot the filtered spectrogram with the adaptive threshold applied
+# plt.figure(figsize=(10, 5))
+# plt.imshow(np.flipud(aa), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]]) 
+# plt.title('Filtered Spectrograms')
+# plt.xlabel('Time [us]')
+# plt.ylabel('Frequency [MHz]')
+# plt.colorbar(label='Filter Amplitude')
+# plt.tight_layout()
+# plt.show()
 
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
@@ -166,13 +169,13 @@ thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
 aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
 # Plot the Target Map
-plt.figure(figsize=(10, 5))
-plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
-plt.title('Targets---')
-plt.xlabel('Time [us]',fontsize = psize)
-plt.ylabel('Frequency [MHz]',fontsize = psize)
-plt.colorbar(label='Filter Amplitude')
-plt.tight_layout()
+# plt.figure(figsize=(10, 5))
+# plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
+# plt.title('Targets---')
+# plt.xlabel('Time [us]',fontsize = psize)
+# plt.ylabel('Frequency [MHz]',fontsize = psize)
+# plt.colorbar(label='Filter Amplitude')
+# plt.tight_layout()
 
 # Assume aa_filtered_clean is the spectrogram in dB format
 aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
@@ -207,11 +210,11 @@ min_aspect_ratio = 1
 filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
 
 # Debug visualization
-plt.figure(figsize=(10, 5))
-plt.imshow(aa_filtered_clean, cmap='gray', origin='lower', aspect='auto')
-#plt.title("Detected Regions and Filtered Slashes")
-plt.xlabel("Time (us)",fontsize = psize)
-plt.ylabel("Frequency (MHz)",fontsize = psize)
+# plt.figure(figsize=(10, 5))
+# plt.imshow(aa_filtered_clean, cmap='gray', origin='lower', aspect='auto')
+# #plt.title("Detected Regions and Filtered Slashes")
+# plt.xlabel("Time (us)",fontsize = psize)
+# plt.ylabel("Frequency (MHz)",fontsize = psize)
 
 for region in regionprops(labeled_mask):
     minr, minc, maxr, maxc = region.bbox
@@ -264,17 +267,17 @@ for region in regionprops(labeled_mask):
     # Debug: Draw bounding box
     plt.plot([minc, maxc, maxc, minc, minc], [minr, minr, maxr, maxr, minr], 'r-', linewidth=1)
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 
-# Display final filtered mask
-plt.figure(figsize=(10, 5))
-plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
-plt.title("Final Filtered Mask (Only Straight Slashes)")
-plt.xlabel("Time (samples)",fontsize = psize)
-plt.ylabel("Frequency (Hz)",fontsize = psize)
-plt.tight_layout()
-plt.show()
+# # Display final filtered mask
+# plt.figure(figsize=(10, 5))
+# plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
+# plt.title("Final Filtered Mask (Only Straight Slashes)")
+# plt.xlabel("Time (samples)",fontsize = psize)
+# plt.ylabel("Frequency (Hz)",fontsize = psize)
+# plt.tight_layout()
+# plt.show()
 
 # ----------------------------------------------------------------------------
 # Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
@@ -286,22 +289,22 @@ frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
 # Map the time indices to microseconds
 time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
 
-plt.figure(figsize=(10, 5))
-plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
-plt.title('DBSCAN Clustering of Chirp Signals')
-plt.xlabel('Time [us]',fontsize = psize)
-plt.ylabel('Frequency [MHz]',fontsize = psize)
-plt.colorbar(label='Cluster ID')
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(10, 5))
+# plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
+# plt.title('DBSCAN Clustering of Chirp Signals')
+# plt.xlabel('Time [us]',fontsize = psize)
+# plt.ylabel('Frequency [MHz]',fontsize = psize)
+# plt.colorbar(label='Cluster ID')
+# plt.tight_layout()
+# plt.show()
 
-# Plot the target map (filtered spectrogram)
-plt.figure(figsize=(10, 5))
-plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
-#plt.title('Targets')
-plt.xlabel('Time [us]',fontsize = psize)
-plt.ylabel('Frequency [MHz]',fontsize = psize)
-#plt.colorbar(label='Filter Amplitude')
+# # Plot the target map (filtered spectrogram)
+# plt.figure(figsize=(10, 5))
+# plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
+# #plt.title('Targets')
+# plt.xlabel('Time [us]',fontsize = psize)
+# plt.ylabel('Frequency [MHz]',fontsize = psize)
+# #plt.colorbar(label='Filter Amplitude')
 
 for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
     cluster_points = time_freq_data[clusters == cluster]
@@ -310,10 +313,10 @@ for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noi
     plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
 
 # Show the plot with the target map and cluster points
-plt.tight_layout()
-plt.legend(fontsize = psize)
-plt.show(block=True)
-plt.show()
+# plt.tight_layout()
+# plt.legend(fontsize = psize)
+# plt.show(block=True)
+# plt.show()
 # Number of clusters (excluding noise)
 num_clusters = len(np.unique(clusters[clusters != -1]))
 print(f"Number of clusters: {num_clusters}")
@@ -339,12 +342,11 @@ cluster_params = {}
 for cluster_id in np.unique(clusters):
     if cluster_id != -1:  # Exclude noise 
         cluster_points = time_freq_data[clusters == cluster_id]
-        frequency_indices = bb[cluster_points[:, 0]]  # Use the correct frequency bins (bb)
-        
-        # 2nd column of the time_freq_data
-        time_indices = cc[cluster_points[:, 1]]  # us
+        frequency_indices = bb[cluster_points[:, 0]]  
+
+        time_indices = cluster_points[:, 1]  # us
         bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
-        center_frequency = np.mean(frequency_indices)
+        center_frequency = (np.max(frequency_indices) - np.min(frequency_indices))/2#np.mean(frequency_indices)
         time_span = np.max(time_indices) - np.min(time_indices)  # us
         if time_span != 0:
             chirp_rate = bandwidth / time_span  # MHz per us
@@ -411,7 +413,7 @@ if len(isolated_pulses_data) > 0:
         axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
         axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
         
-        #axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
+        axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
         axes[idx].set_xlabel("Index")
         axes[idx].set_ylabel("Amplitude")
         axes[idx].legend()
@@ -421,3 +423,291 @@ if len(isolated_pulses_data) > 0:
 
 else:
     print("No clusters detected, skipping the isolated I/Q data visualization.")
+# =============================================
+# === Radar Signal Analysis Functions with Plots ===
+# =============================================
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import welch, find_peaks
+from scipy.ndimage import gaussian_filter1d
+
+def estimate_center_frequency(iq_data, fs, cluster_id):
+    nperseg = 1024
+
+        # --- Identify non-zero region ---
+    magnitude = np.abs(iq_data)
+    threshold = 0.05 * np.max(magnitude)
+    active_indices = np.where(magnitude > threshold)[0]
+
+    if len(active_indices) > 0:
+        start = max(active_indices[0] - 10, 0)
+        end = min(active_indices[-1] + 10, len(iq_data))
+        iq_zoomed = iq_data[start:end]
+        time_zoomed = np.arange(start, end) / fs
+    else:
+        iq_zoomed = iq_data
+        time_zoomed = np.arange(len(iq_data)) / fs
+
+    # --- Plot Zoomed-In IQ Data ---
+    plt.figure(figsize=(10, 4))
+    plt.plot(time_zoomed, iq_zoomed.real, label="I (Real)", alpha=0.7)
+    plt.plot(time_zoomed, iq_zoomed.imag, label="Q (Imag)", alpha=0.7)
+    plt.plot(time_zoomed, np.abs(iq_zoomed), label="|IQ| (Magnitude)", linestyle="--", alpha=0.5)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.title(f"Cluster {cluster_id} - Zoomed-In IQ Data")
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+    
+    # --- Plot Raw IQ Data ---
+    time = np.arange(len(iq_data)) / fs
+    plt.figure(figsize=(10, 4))
+    plt.plot(time, iq_data.real, label="I (Real)", alpha=0.7)
+    plt.plot(time, iq_data.imag, label="Q (Imag)", alpha=0.7)
+    plt.plot(time, np.abs(iq_data), label="|IQ| (Magnitude)", linestyle="--", alpha=0.5)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.title(f"Cluster {cluster_id} - Raw IQ Data")
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+    # --- Compute PSD ---
+    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg//2, return_onesided=False)
+    psd_smooth = gaussian_filter1d(psd, sigma=5)
+
+    # --- Find Peaks in PSD ---
+    peak_indices, _ = find_peaks(psd_smooth, height=np.max(psd_smooth) * 0.5)  # Only strong peaks
+    peak_freqs = freqs[peak_indices]
+
+    # Estimate center frequency
+    if len(peak_freqs) >= 2:
+        # Sort by PSD height
+        top2 = peak_indices[np.argsort(psd_smooth[peak_indices])[-2:]]
+        f1, f2 = freqs[top2[0]], freqs[top2[1]]
+        center_freq = (f1 + f2) / 2
+    else:
+        # Fall back to single peak
+        center_freq = freqs[np.argmax(psd_smooth)]
+
+    # --- Plot PSDs ---
+    plt.figure(figsize=(8, 4))
+    plt.plot(freqs, psd, label="Welch PSD (Raw)", color="blue")
+    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power Spectral Density (Power/Hz)")
+    plt.title(f"Cluster {cluster_id} - Welch PSD (Raw)")
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(freqs, psd_smooth, label="Welch PSD (Smoothed)", color="green")
+    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power Spectral Density (Power/Hz)")
+    plt.title(f"Cluster {cluster_id} - Welch PSD (Smoothed)")
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+    return center_freq
+
+
+#def estimate_center_frequency(iq_data, fs, cluster_id):
+    nperseg = 1024#max(len(iq_data) // 4, 256)  
+    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg//2)
+    psd_smooth = gaussian_filter1d(psd, sigma=5) 
+    peak_idx = np.argmax(psd_smooth)
+    center_freq = freqs[peak_idx] 
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(iq_data, label="I (Real)", alpha=0.7)
+    #plt.plot(iq_data.imag, label="Q (Imag)", alpha=0.7)
+    #plt.plot(time, np.abs(iq_data), label="|IQ| (Magnitude)", linestyle="--", alpha=0.5)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.title(f"Cluster {cluster_id} - Raw IQ Data")
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+    
+    # Plot the raw PSD (non-smoothed)
+    plt.figure(figsize=(8, 4))
+    plt.plot(freqs, psd, color="blue", label="Welch PSD (Raw)")
+    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power Spectral Density (Hz)")
+    plt.title(f"Cluster {cluster_id} - Welch PSD (Raw)")
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+    # Plot the smoothed PSD
+    plt.figure(figsize=(8, 4))
+    plt.plot(freqs, psd_smooth, color="green", label="Welch PSD (Smoothed with Gaussian Filter)")
+    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power Spectral Density (Hz)")
+    plt.title(f"Cluster {cluster_id} - Welch PSD (Smoothed with Gaussian Filter)")
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+    return center_freq
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import welch
+from scipy.ndimage import gaussian_filter1d
+from sklearn.mixture import GaussianMixture
+
+def estimate_bandwidth(iq_data, fs, cluster_id, n_components=2):
+    nperseg = 1024
+
+    # --- Compute PSD ---
+    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
+    psd = psd / np.max(psd)  # Normalize
+    psd_smooth = gaussian_filter1d(psd, sigma=5)
+
+    # Prepare data for GMM: frequency vs power
+    X = freqs.reshape(-1, 1)
+    y = psd_smooth.reshape(-1, 1)
+
+    # Use PSD as weights in fitting
+    gmm = GaussianMixture(n_components=n_components, covariance_type='full')
+    gmm.fit(X)
+
+    means = gmm.means_.flatten()
+    stds = np.sqrt(np.array([np.diag(cov) for cov in gmm.covariances_])).flatten()
+
+    # Effective bandwidth: span of 2σ around all components
+    lower = np.min(means - 2 * stds)
+    upper = np.max(means + 2 * stds)
+    bandwidth = upper - lower
+    center_freq = (upper + lower) / 2
+
+    # --- Plot ---
+    plt.figure(figsize=(10, 5))
+    plt.plot(freqs, psd_smooth, label="Smoothed PSD", color='green')
+    for i in range(n_components):
+        mu, sigma = means[i], stds[i]
+        plt.axvline(mu, linestyle='--', color='blue', alpha=0.6, label=f"μ{i+1} = {mu:.1f} Hz")
+        plt.fill_betweenx([0, max(psd_smooth)], mu - 2*sigma, mu + 2*sigma,
+                          alpha=0.2, label=f"±2σ{i+1}", color='blue')
+    plt.axvline(lower, color='red', linestyle='--', label="Lower BW Limit")
+    plt.axvline(upper, color='red', linestyle='--', label="Upper BW Limit")
+    plt.title(f"Cluster {cluster_id} - GMM Bandwidth Estimation")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Normalized Power")
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+    print(f"Estimated Center Frequency ≈ {center_freq:.2f} Hz")
+    print(f"Estimated Bandwidth (GMM, ±2σ span) ≈ {bandwidth:.2f} Hz")
+    return bandwidth
+
+
+#def estimate_bandwidth(iq_data, fs, cluster_id):
+    N = len(iq_data)
+    freqs = np.fft.fftfreq(N, d=1/fs)
+    spectrum = np.abs(np.fft.fft(iq_data))**2 
+    max_power = np.max(spectrum) 
+    threshold = max_power / 2
+
+    indices = np.where(spectrum >= threshold)[0]
+
+    if len(indices) > 0:
+        peak_idx = np.argmax(spectrum)
+        peak_range = spectrum[peak_idx - 50: peak_idx + 50] if peak_idx - 50 >= 0 else spectrum[:peak_idx + 50]
+        bw_start_idx = np.argmax(peak_range > threshold)
+        bw_end_idx = len(peak_range) - np.argmax(np.flip(peak_range) > threshold)
+
+        bw_low = freqs[indices[bw_start_idx]] / 1e6  
+        bw_high = freqs[indices[bw_end_idx]] / 1e6 
+        bw = bw_high - bw_low 
+    else:
+        bw = 0 
+        bw_low, bw_high = None, None
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(freqs / 1e6, spectrum, label="Power Spectrum", color="blue")
+    if bw_low and bw_high:
+        plt.axvline(bw_low, color="green", linestyle="--", label=f"3 dB BW Start: {bw_low:.3f} MHz")
+        plt.axvline(bw_high, color="purple", linestyle="--", label=f"3 dB BW End: {bw_high:.3f} MHz")
+    plt.xlabel("Frequency (MHz)")
+    plt.ylabel("Power")
+    plt.title(f"Cluster {cluster_id} - 3 dB Bandwidth")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    return bw
+
+def estimate_chirp_rate(iq_data, fs, cluster_id):
+    real_signal = np.real(iq_data)  # Extract the real part of the I/Q data
+    analytic_signal = hilbert(real_signal)  # Apply Hilbert transform
+    phase = np.unwrap(np.angle(analytic_signal))  # Unwrap phase
+    inst_freq = np.diff(phase) / (2 * np.pi * (1/fs))  # Compute instantaneous frequency
+
+    if len(inst_freq) > 1:
+        time = np.arange(len(inst_freq)) / fs
+        chirp_rate = np.polyfit(time, inst_freq, 1)[0] / 1e12  # Convert Hz/s → MHz/µs
+
+        # Plot Instantaneous Frequency
+        plt.figure(figsize=(8, 4))
+        plt.plot(time * 1e6, inst_freq / 1e6, label="Instantaneous Frequency", color="blue")
+        plt.xlabel("Time (µs)")
+        plt.ylabel("Frequency (MHz)")
+        plt.title(f"Cluster {cluster_id} - Instantaneous Frequency")
+        plt.axline((time[0] * 1e6, inst_freq[0] / 1e6), slope=chirp_rate * 1e6, color="red", linestyle="--", label=f"Chirp Rate: {chirp_rate:.3f} MHz/µs")
+        plt.legend()
+        plt.grid()
+        plt.show()
+    else:
+        chirp_rate = 0  # If not enough points for estimation
+
+    return chirp_rate
+
+# =============================================
+# === Compute and Print Radar Characteristics ===
+# =============================================
+
+def compute_radar_characteristics(isolated_pulses_data, fs):
+    radar_characteristics = {}
+
+    for cluster_id, iq_data in isolated_pulses_data.items():
+        if len(iq_data) > 1:
+            center_freq = estimate_center_frequency(iq_data, fs, cluster_id)
+            bandwidth = estimate_bandwidth(iq_data, fs, cluster_id)
+            chirp_rate = estimate_chirp_rate(iq_data, fs, cluster_id)
+        else:
+            center_freq, bandwidth, chirp_rate = None, None, None  # Handle empty signals
+
+        radar_characteristics[cluster_id] = {
+            "Center Frequency (MHz)": center_freq,
+            "Bandwidth (MHz)": bandwidth,
+            "Chirp Rate (MHz/µs)": chirp_rate
+        }
+
+    # Print radar characteristics
+    print("\nRadar Signal Characteristics for Each Cluster:")
+    for cluster_id, characteristics in radar_characteristics.items():
+        print(f"\nCluster {cluster_id}:")
+        for key, value in characteristics.items():
+            if value is not None:
+                print(f"  {key}: {value:.6f}")  # Print values with 6 decimal places
+            else:
+                print(f"  {key}: N/A")
+    
+    return radar_characteristics
+
+radar_characteristics = compute_radar_characteristics(isolated_pulses_data, sampling_rate)

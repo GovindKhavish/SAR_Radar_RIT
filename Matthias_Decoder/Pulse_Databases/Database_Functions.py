@@ -4,6 +4,7 @@
 #=========================================================================================
 from __future__ import division, print_function, unicode_literals
 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -45,6 +46,231 @@ def analyze_tolerance(db_path):
         2: {"bandwidth": 6.0, "center_frequency": -2.0, "pulse_duration": 15.0, "chirp_rate": 0.4, "count": 121},
         3: {"bandwidth": 7.0, "center_frequency": 2.0, "pulse_duration": 20.0, "chirp_rate": 0.35, "count": 108},
         4: {"bandwidth": 8.0, "center_frequency": 4.0, "pulse_duration": 25.0, "chirp_rate": 0.32, "count": 125},
+    }
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT bandwidth, center_frequency, pulse_duration, chirp_rate FROM pulse_data")
+    detected_data = cursor.fetchall()
+    conn.close()
+
+    if not detected_data:
+        return {key: {"detected_count": 0, "bandwidth_error": None, "center_frequency_error": None, "pulse_duration_error": None, "chirp_rate_error": None, "count_error": None} for key in injected_signals}
+
+    detected_data = np.array(detected_data)
+    detected_signals = {key: {"bandwidth": [], "center_frequency": [], "pulse_duration": [], "chirp_rate": [], "count": 0} for key in injected_signals}
+
+    for bw, fc, duration, chirp_rate in detected_data:
+        closest_key = None
+        min_distance = float("inf")
+
+        for key, values in injected_signals.items():
+            distance = np.sqrt(
+                (bw - values["bandwidth"])**2 +
+                (fc - values["center_frequency"])**2 +
+                (duration - values["pulse_duration"])**2
+            )
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_key = key
+
+        if closest_key:
+            detected_signals[closest_key]["bandwidth"].append(bw)
+            detected_signals[closest_key]["center_frequency"].append(fc)
+            detected_signals[closest_key]["pulse_duration"].append(duration)
+            detected_signals[closest_key]["chirp_rate"].append(chirp_rate)
+            detected_signals[closest_key]["count"] += 1
+
+    tolerance_results = {}
+
+    for key, values in detected_signals.items():
+        injected = injected_signals[key]
+        
+        if values["count"] > 0:
+            avg_bw = np.mean(values["bandwidth"])
+            avg_fc = np.mean(values["center_frequency"])
+            avg_duration = np.mean(values["pulse_duration"])
+            avg_chirp_rate = np.mean(values["chirp_rate"])
+            detected_count = values["count"]
+            
+            tolerance_results[key] = {
+                "detected_count": detected_count,
+                "bandwidth_error": abs(avg_bw - injected["bandwidth"]) / injected["bandwidth"] * 100,
+                "center_frequency_error": abs(avg_fc - injected["center_frequency"]) / abs(injected["center_frequency"]) * 100 if injected["center_frequency"] != 0 else abs(avg_fc) * 100,
+                "pulse_duration_error": abs(avg_duration - injected["pulse_duration"]) / injected["pulse_duration"] * 100,
+                "chirp_rate_error": abs(avg_chirp_rate - injected["chirp_rate"]) / injected["chirp_rate"] * 100,
+                "count_error": abs(detected_count - injected["count"]) / injected["count"] * 100
+            }
+        else:
+            tolerance_results[key] = {
+                "detected_count": 0,
+                "bandwidth_error": None,
+                "center_frequency_error": None,
+                "pulse_duration_error": None,
+                "chirp_rate_error": None,
+                "count_error": None
+            }
+    
+    return tolerance_results
+
+def analyze_tolerance_bandwidth(db_path):
+    injected_signals = {
+        1: {"bandwidth": 5.0, "center_frequency": 1.0, "pulse_duration": 20.0, "chirp_rate": 0.25, "count": 116},
+        2: {"bandwidth": 6.0, "center_frequency": 1.0, "pulse_duration": 20.0, "chirp_rate": 0.3, "count": 121},
+        3: {"bandwidth": 7.0, "center_frequency": 1.0, "pulse_duration": 20.0, "chirp_rate": 0.35, "count": 108},
+        4: {"bandwidth": 8.0, "center_frequency": 1.0, "pulse_duration": 20.0, "chirp_rate": 0.4, "count": 125},
+    }
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT bandwidth, center_frequency, pulse_duration, chirp_rate FROM pulse_data")
+    detected_data = cursor.fetchall()
+    conn.close()
+
+    if not detected_data:
+        return {key: {"detected_count": 0, "bandwidth_error": None, "center_frequency_error": None, "pulse_duration_error": None, "chirp_rate_error": None, "count_error": None} for key in injected_signals}
+
+    detected_data = np.array(detected_data)
+    detected_signals = {key: {"bandwidth": [], "center_frequency": [], "pulse_duration": [], "chirp_rate": [], "count": 0} for key in injected_signals}
+
+    for bw, fc, duration, chirp_rate in detected_data:
+        closest_key = None
+        min_distance = float("inf")
+
+        for key, values in injected_signals.items():
+            distance = np.sqrt(
+                (bw - values["bandwidth"])**2 +
+                (fc - values["center_frequency"])**2 +
+                (duration - values["pulse_duration"])**2
+            )
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_key = key
+
+        if closest_key:
+            detected_signals[closest_key]["bandwidth"].append(bw)
+            detected_signals[closest_key]["center_frequency"].append(fc)
+            detected_signals[closest_key]["pulse_duration"].append(duration)
+            detected_signals[closest_key]["chirp_rate"].append(chirp_rate)
+            detected_signals[closest_key]["count"] += 1
+
+    tolerance_results = {}
+
+    for key, values in detected_signals.items():
+        injected = injected_signals[key]
+        
+        if values["count"] > 0:
+            avg_bw = np.mean(values["bandwidth"])
+            avg_fc = np.mean(values["center_frequency"])
+            avg_duration = np.mean(values["pulse_duration"])
+            avg_chirp_rate = np.mean(values["chirp_rate"])
+            detected_count = values["count"]
+            
+            tolerance_results[key] = {
+                "detected_count": detected_count,
+                "bandwidth_error": abs(avg_bw - injected["bandwidth"]) / injected["bandwidth"] * 100,
+                "center_frequency_error": abs(avg_fc - injected["center_frequency"]) / abs(injected["center_frequency"]) * 100 if injected["center_frequency"] != 0 else abs(avg_fc) * 100,
+                "pulse_duration_error": abs(avg_duration - injected["pulse_duration"]) / injected["pulse_duration"] * 100,
+                "chirp_rate_error": abs(avg_chirp_rate - injected["chirp_rate"]) / injected["chirp_rate"] * 100,
+                "count_error": abs(detected_count - injected["count"]) / injected["count"] * 100
+            }
+        else:
+            tolerance_results[key] = {
+                "detected_count": 0,
+                "bandwidth_error": None,
+                "center_frequency_error": None,
+                "pulse_duration_error": None,
+                "chirp_rate_error": None,
+                "count_error": None
+            }
+    
+    return tolerance_results
+
+def analyze_tolerance_frequnecy(db_path):
+    injected_signals = {
+        1: {"bandwidth": 5.0, "center_frequency": -4.0, "pulse_duration": 20.0, "chirp_rate": 0.25, "count": 116},
+        2: {"bandwidth": 5.0, "center_frequency": -2.0, "pulse_duration": 20.0, "chirp_rate": 0.25, "count": 121},
+        3: {"bandwidth": 5.0, "center_frequency": 2.0, "pulse_duration": 20.0, "chirp_rate": 0.25, "count": 108},
+        4: {"bandwidth": 5.0, "center_frequency": 4.0, "pulse_duration": 20.0, "chirp_rate": 0.25, "count": 125},
+    }
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT bandwidth, center_frequency, pulse_duration, chirp_rate FROM pulse_data")
+    detected_data = cursor.fetchall()
+    conn.close()
+
+    if not detected_data:
+        return {key: {"detected_count": 0, "bandwidth_error": None, "center_frequency_error": None, "pulse_duration_error": None, "chirp_rate_error": None, "count_error": None} for key in injected_signals}
+
+    detected_data = np.array(detected_data)
+    detected_signals = {key: {"bandwidth": [], "center_frequency": [], "pulse_duration": [], "chirp_rate": [], "count": 0} for key in injected_signals}
+
+    for bw, fc, duration, chirp_rate in detected_data:
+        closest_key = None
+        min_distance = float("inf")
+
+        for key, values in injected_signals.items():
+            distance = np.sqrt(
+                (bw - values["bandwidth"])**2 +
+                (fc - values["center_frequency"])**2 +
+                (duration - values["pulse_duration"])**2
+            )
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_key = key
+
+        if closest_key:
+            detected_signals[closest_key]["bandwidth"].append(bw)
+            detected_signals[closest_key]["center_frequency"].append(fc)
+            detected_signals[closest_key]["pulse_duration"].append(duration)
+            detected_signals[closest_key]["chirp_rate"].append(chirp_rate)
+            detected_signals[closest_key]["count"] += 1
+
+    tolerance_results = {}
+
+    for key, values in detected_signals.items():
+        injected = injected_signals[key]
+        
+        if values["count"] > 0:
+            avg_bw = np.mean(values["bandwidth"])
+            avg_fc = np.mean(values["center_frequency"])
+            avg_duration = np.mean(values["pulse_duration"])
+            avg_chirp_rate = np.mean(values["chirp_rate"])
+            detected_count = values["count"]
+            
+            tolerance_results[key] = {
+                "detected_count": detected_count,
+                "bandwidth_error": abs(avg_bw - injected["bandwidth"]) / injected["bandwidth"] * 100,
+                "center_frequency_error": abs(avg_fc - injected["center_frequency"]) / abs(injected["center_frequency"]) * 100 if injected["center_frequency"] != 0 else abs(avg_fc) * 100,
+                "pulse_duration_error": abs(avg_duration - injected["pulse_duration"]) / injected["pulse_duration"] * 100,
+                "chirp_rate_error": abs(avg_chirp_rate - injected["chirp_rate"]) / injected["chirp_rate"] * 100,
+                "count_error": abs(detected_count - injected["count"]) / injected["count"] * 100
+            }
+        else:
+            tolerance_results[key] = {
+                "detected_count": 0,
+                "bandwidth_error": None,
+                "center_frequency_error": None,
+                "pulse_duration_error": None,
+                "chirp_rate_error": None,
+                "count_error": None
+            }
+    
+    return tolerance_results
+
+def analyze_tolerance_duration(db_path):
+    injected_signals = {
+        1: {"bandwidth": 5.0, "center_frequency": 1.0, "pulse_duration": 10.0, "chirp_rate": 0.5, "count": 116},
+        2: {"bandwidth": 5.0, "center_frequency": 1.0, "pulse_duration": 15.0, "chirp_rate": 0.33, "count": 121},
+        3: {"bandwidth": 5.0, "center_frequency": 1.0, "pulse_duration": 20.0, "chirp_rate": 0.25, "count": 108},
+        4: {"bandwidth": 5.0, "center_frequency": 1.0, "pulse_duration": 25.0, "chirp_rate": 0.2, "count": 125},
     }
 
     conn = sqlite3.connect(db_path)
@@ -204,34 +430,109 @@ def plot_pdw_scatter(df):
             color=color_map(i), marker="X", s=100, label=f"Center of Bin {bin_value}"
         )
 
-    plt.xlabel("Center Frequency (MHz)")
-    plt.ylabel("Chirp Rate (MHz/us)")
-    plt.title("Center Frequency vs Chirp Rate (Grouped by Tolerance)")
+    plt.xlabel("Center Frequency (MHz)", fontsize = 14)
+    plt.ylabel("Chirp Rate (MHz/us)", fontsize = 14)
+    #plt.title("Center Frequency vs Chirp Rate (Grouped by Tolerance)")
     plt.grid(True, linestyle="--", alpha=0.5)
-    plt.legend(loc="upper right", fontsize=8)
+    #plt.legend(loc="upper right", fontsize=8)
     plt.show()
 
-
-def display_top_bins(df):
+def display_top_bins(df, filename):
     expected_columns = ["bin", "pulse_count", "mean_center_frequency", "mean_chirp_rate", "mean_pulse_duration"]
     for col in expected_columns:
         if col not in df.columns:
             raise ValueError(f"Missing expected column: {col}")
 
-    total_pulses = df["pulse_count"].sum()  # Total pulse count across all bins
+    total_pulses = df["pulse_count"].sum()  
     top_bins = df.sort_values(by="pulse_count", ascending=False).head(5)
 
     print("Top 5 Bins with the Most Pulses:")
     for index, row in top_bins.iterrows():
-        pulse_percentage = (row['pulse_count'] / total_pulses) * 100  # Calculate percentage of total pulses
+        pulse_percentage = (row['pulse_count'] / total_pulses) * 100  
         print(f"\nBin {row['bin']}:")
         print(f"  - Pulse Count: {row['pulse_count']}")
         print(f"  - Percentage of Total Pulses: {pulse_percentage:.2f}%")
         print(f"  - Mean Center Frequency: {row['mean_center_frequency'] / 1e6:.2f} MHz")
         print(f"  - Mean Chirp Rate: {row['mean_chirp_rate'] / 1e12:.2f} MHz/us")
-        print(f"  - Mean Duration: {row['mean_pulse_duration'] * 1e6:.2f} µs")  # Convert to microseconds
+        print(f"  - Mean Duration: {row['mean_pulse_duration'] * 1e6:.2f} µs") 
+
+    output_folder = r"/Users/khavishgovind/Desktop/Top_5_CSVs"  
+    os.makedirs(output_folder, exist_ok=True)
+    output_csv = os.path.join(output_folder, filename)
+    top_bins.to_csv(output_csv, index=False)
+    print(f"\nTop 5 bins saved to {output_csv}")
 
     return top_bins
+
+def plot_top_bins(csv_files, labels=None):
+    plt.figure(figsize=(10, 6))
+    
+    if labels is None:
+        labels = [f"Tolerance {i+1}" for i in range(len(csv_files))]  # Auto-generate labels if not provided
+    
+    markers = ['o', 's', '^', 'd', 'x']  # Different markers for each dataset
+    colors = ['b', 'g', 'r', 'c', 'm']  # Different colors
+
+    for i, file in enumerate(csv_files):
+        df = pd.read_csv(file)
+        
+        # Extract center frequency (X) and chirp rate (Y)
+        x = df["mean_center_frequency"] / 1e6  # Convert to MHz
+        y = df["mean_chirp_rate"] / 1e12  # Convert to MHz/us
+        
+        plt.scatter(x, y, label=labels[i], marker=markers[i % len(markers)], color=colors[i % len(colors)], s=100)
+
+    # Plot Formatting
+    plt.xlabel("Mean Center Frequency (MHz)")
+    plt.ylabel("Mean Chirp Rate (MHz/us)")
+    plt.title("Comparison of Top 5 Bins for Different Tolerances")
+    plt.legend()
+    plt.grid(True)
+    
+    plt.show()
+
+def plot_grouped_top_bins(csv_files, labels=None):
+    """
+    Plots mean center frequency vs mean chirp rate for top 5 bins from multiple CSV files.
+    Each tolerance level is shown in a different color, and each bin rank has a different marker style.
+    The legend is printed in the terminal for clarity.
+    """
+    plt.figure(figsize=(12, 7))
+
+    if labels is None:
+        labels = [f"Tolerance {i+1}" for i in range(len(csv_files))]
+
+    # Define unique markers for bin ranks (1st, 2nd, ..., 5th)
+    markers = ['o', 's', '^', 'd', 'x']
+    colors = ['b', 'g', 'r', 'c', 'm']
+
+    print("\nLegend for the Scatter Plot:\n")
+    print(f"{'Tolerance':<15}{'Bin Rank':<10}{'Color':<10}{'Marker'}")
+    print("-" * 50)
+
+    for i, file in enumerate(csv_files):
+        df = pd.read_csv(file)
+
+        for bin_rank in range(len(df)):  # Iterate over 5 bins in each file
+            x = df["mean_center_frequency"].iloc[bin_rank] / 1e6  # Convert to MHz
+            y = df["mean_chirp_rate"].iloc[bin_rank] / 1e12  # Convert to MHz/us
+
+            # If the marker is 'x', don't specify edgecolor
+            if markers[bin_rank] == 'x':
+                plt.scatter(x, y, marker=markers[bin_rank], color=colors[i], s=100, alpha=0.8)
+            else:
+                plt.scatter(x, y, marker=markers[bin_rank], color=colors[i], s=100, edgecolors='black', alpha=0.8)
+
+            # Print legend entry in the terminal
+            print(f"{labels[i]:<15}{bin_rank+1:<10}{colors[i]:<10}{markers[bin_rank]}")
+
+    plt.xlabel("Mean Center Frequency (MHz)")
+    plt.ylabel("Mean Chirp Rate (MHz/us)")
+    plt.title("Top 5 Bins Across Different Tolerances (Grouped)")
+    plt.legend(title="Tolerance & Bin Rank", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, linestyle="--", alpha=0.6)
+
+    plt.show()
 
 def plot_top_5_pdw_scatter_with_summary_table(df, tolerance):
     """Scatter plot of the top 5 groups with the highest pulse counts along with a summary table in the console."""
@@ -314,9 +615,6 @@ def plot_top_5_pdw_scatter_with_summary_table(df, tolerance):
 
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()
-
-
-
 # --------------------- Display Database ---------------------
 def display_database_in_window(db_path):
     conn = sqlite3.connect(db_path)

@@ -17,16 +17,30 @@ import Database_Functions  # Custom module for database handling and plotting
 db_folder = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Databases"
 #db_folder = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Databases"
 db_name = "pulse_characteristics_Mipur.db"
-# db_name = "pulse_characteristics_Burst_Simulator.db"
+# db_name = "pulse_characteristics_Burst_Simulator_Bandwidth.db"
+# db_name = "pulse_characteristics_Burst_Simulator_Frequnecy.db"
+# db_name = "pulse_characteristics_Burst_Simulator_Duration.db"
 db_path = f"{db_folder}/{db_name}"
-freq_tolerance = 0.08  # 1% tolerance for center frequency
-chirp_tolerance = 0.0147  # 5% tolerance for chirp rate
+freq_tolerance = [0.8,0.1048,0.0994,0.1057,0.0974] 
+chirp_tolerance = [0.0147,0.0042,0.0171,0.008,0.011]  
 
 # Load pulse data
 # pulse_data = Database_Functions.load_pulse_data_from_db(db_path)
 
 # ------------------- Tolerance Analysis ---------------------
 # results = Database_Functions.analyze_tolerance(db_path)
+# print(Database_Functions.print_tolerance_results(results))# 
+
+# Changing Bandwidth
+# results = Database_Functions.analyze_tolerance_bandwidth(db_path)
+# print(Database_Functions.print_tolerance_results(results))
+
+# Changing Duration
+# results = Database_Functions.analyze_tolerance_duration(db_path)
+# print(Database_Functions.print_tolerance_results(results))
+
+# Changing Frequnecy
+# results = Database_Functions.analyze_tolerance_frequnecy(db_path)
 # print(Database_Functions.print_tolerance_results(results))
 
 # ------------------- Viewing Database ---------------------
@@ -34,11 +48,21 @@ chirp_tolerance = 0.0147  # 5% tolerance for chirp rate
 # #Database_Functions.display_converted_database_in_window(db_path)
 
 # ------------------- Real Data PDW ---------------------
-pdw_results = Database_Functions.pdw_analysis(db_path, freq_tolerance, chirp_tolerance)
+# pdw_results = Database_Functions.pdw_analysis(db_path, freq_tolerance[4], chirp_tolerance[4])
 #Database_Functions.plot_pdw_bins(pdw_results, tolerance)
-Database_Functions.plot_pdw_scatter(pdw_results)
-Database_Functions.display_top_bins(pdw_results)
+# Database_Functions.plot_pdw_scatter(pdw_results)
+#Database_Functions.display_top_bins(pdw_results,"top_5_bins_5.csv")
 #Database_Functions.plot_top_5_pdw_scatter_with_summary_table(pdw_results,tolerance) 
+
+csv_files = [
+    "/Users/khavishgovind/Desktop/Top_5_CSVs/top_5_bins_1.csv",
+    "/Users/khavishgovind/Desktop/Top_5_CSVs/top_5_bins_2.csv",
+    "/Users/khavishgovind/Desktop/Top_5_CSVs/top_5_bins_3.csv",
+    "/Users/khavishgovind/Desktop/Top_5_CSVs/top_5_bins_4.csv",
+    "/Users/khavishgovind/Desktop/Top_5_CSVs/top_5_bins_5.csv"
+]
+Database_Functions.plot_grouped_top_bins(csv_files)
+Database_Functions.plot_top_bins(csv_files)
 
 
 # ------------------- Plotting ---------------------
