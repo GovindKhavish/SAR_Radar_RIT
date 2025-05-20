@@ -32,8 +32,8 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
 filename = '/s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Damascus_Syria/S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
@@ -265,7 +265,7 @@ for region in regionprops(labeled_mask):
     filtered_mask_slashes[labeled_mask == region.label] = True
 
     # Debug: Draw bounding box
-    plt.plot([minc, maxc, maxc, minc, minc], [minr, minr, maxr, maxr, minr], 'r-', linewidth=1)
+    #plt.plot([minc, maxc, maxc, minc, minc], [minr, minr, maxr, maxr, minr], 'r-', linewidth=1)
 
 # plt.tight_layout()
 # plt.show()
@@ -283,7 +283,7 @@ for region in regionprops(labeled_mask):
 # Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
 time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
 # DBSCAN Clustering
-clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
+clusters = DBSCAN(eps=20, min_samples=5).fit_predict(time_freq_data)
 # Map the frequency indices to MHz
 frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
 # Map the time indices to microseconds
@@ -310,7 +310,7 @@ for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noi
     cluster_points = time_freq_data[clusters == cluster]
     cluster_time_us = cc[cluster_points[:, 1]]  # Time in µs
     cluster_freq_mhz = bb[cluster_points[:, 0]]  # Frequency in MHz
-    plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
+    #plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
 
 # Show the plot with the target map and cluster points
 # plt.tight_layout()
@@ -362,6 +362,7 @@ for cluster_id in np.unique(clusters):
         }
 
 for cluster_id, params in cluster_params.items():
+    print('---------------------------')
     print(f"Cluster {cluster_id}:")
     print(f"  Bandwidth: {params['bandwidth']} MHz")
     print(f"  Center Frequency: {params['center_frequency']} MHz")
@@ -423,6 +424,8 @@ if len(isolated_pulses_data) > 0:
 
 else:
     print("No clusters detected, skipping the isolated I/Q data visualization.")
+
+print("Start Analytsis")
 # =============================================
 # === Radar Signal Analysis Functions with Plots ===
 # =============================================
@@ -430,284 +433,86 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch, find_peaks
 from scipy.ndimage import gaussian_filter1d
-
-def estimate_center_frequency(iq_data, fs, cluster_id):
-    nperseg = 1024
-
-        # --- Identify non-zero region ---
-    magnitude = np.abs(iq_data)
-    threshold = 0.05 * np.max(magnitude)
-    active_indices = np.where(magnitude > threshold)[0]
-
-    if len(active_indices) > 0:
-        start = max(active_indices[0] - 10, 0)
-        end = min(active_indices[-1] + 10, len(iq_data))
-        iq_zoomed = iq_data[start:end]
-        time_zoomed = np.arange(start, end) / fs
-    else:
-        iq_zoomed = iq_data
-        time_zoomed = np.arange(len(iq_data)) / fs
-
-    # --- Plot Zoomed-In IQ Data ---
-    plt.figure(figsize=(10, 4))
-    plt.plot(time_zoomed, iq_zoomed.real, label="I (Real)", alpha=0.7)
-    plt.plot(time_zoomed, iq_zoomed.imag, label="Q (Imag)", alpha=0.7)
-    plt.plot(time_zoomed, np.abs(iq_zoomed), label="|IQ| (Magnitude)", linestyle="--", alpha=0.5)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
-    plt.title(f"Cluster {cluster_id} - Zoomed-In IQ Data")
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-    
-    # --- Plot Raw IQ Data ---
-    time = np.arange(len(iq_data)) / fs
-    plt.figure(figsize=(10, 4))
-    plt.plot(time, iq_data.real, label="I (Real)", alpha=0.7)
-    plt.plot(time, iq_data.imag, label="Q (Imag)", alpha=0.7)
-    plt.plot(time, np.abs(iq_data), label="|IQ| (Magnitude)", linestyle="--", alpha=0.5)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
-    plt.title(f"Cluster {cluster_id} - Raw IQ Data")
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-
-    # --- Compute PSD ---
-    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg//2, return_onesided=False)
-    psd_smooth = gaussian_filter1d(psd, sigma=5)
-
-    # --- Find Peaks in PSD ---
-    peak_indices, _ = find_peaks(psd_smooth, height=np.max(psd_smooth) * 0.5)  # Only strong peaks
-    peak_freqs = freqs[peak_indices]
-
-    # Estimate center frequency
-    if len(peak_freqs) >= 2:
-        # Sort by PSD height
-        top2 = peak_indices[np.argsort(psd_smooth[peak_indices])[-2:]]
-        f1, f2 = freqs[top2[0]], freqs[top2[1]]
-        center_freq = (f1 + f2) / 2
-    else:
-        # Fall back to single peak
-        center_freq = freqs[np.argmax(psd_smooth)]
-
-    # --- Plot PSDs ---
-    plt.figure(figsize=(8, 4))
-    plt.plot(freqs, psd, label="Welch PSD (Raw)", color="blue")
-    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Power Spectral Density (Power/Hz)")
-    plt.title(f"Cluster {cluster_id} - Welch PSD (Raw)")
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-
-    plt.figure(figsize=(8, 4))
-    plt.plot(freqs, psd_smooth, label="Welch PSD (Smoothed)", color="green")
-    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Power Spectral Density (Power/Hz)")
-    plt.title(f"Cluster {cluster_id} - Welch PSD (Smoothed)")
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-
-    return center_freq
-
-
-#def estimate_center_frequency(iq_data, fs, cluster_id):
-    nperseg = 1024#max(len(iq_data) // 4, 256)  
-    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg//2)
-    psd_smooth = gaussian_filter1d(psd, sigma=5) 
-    peak_idx = np.argmax(psd_smooth)
-    center_freq = freqs[peak_idx] 
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(iq_data, label="I (Real)", alpha=0.7)
-    #plt.plot(iq_data.imag, label="Q (Imag)", alpha=0.7)
-    #plt.plot(time, np.abs(iq_data), label="|IQ| (Magnitude)", linestyle="--", alpha=0.5)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
-    plt.title(f"Cluster {cluster_id} - Raw IQ Data")
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-    
-    # Plot the raw PSD (non-smoothed)
-    plt.figure(figsize=(8, 4))
-    plt.plot(freqs, psd, color="blue", label="Welch PSD (Raw)")
-    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Power Spectral Density (Hz)")
-    plt.title(f"Cluster {cluster_id} - Welch PSD (Raw)")
-    plt.legend()
-    plt.grid()
-    plt.show()
-    
-    # Plot the smoothed PSD
-    plt.figure(figsize=(8, 4))
-    plt.plot(freqs, psd_smooth, color="green", label="Welch PSD (Smoothed with Gaussian Filter)")
-    plt.axvline(center_freq, color="red", linestyle="--", label=f"Center Freq: {center_freq:.2f} Hz")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Power Spectral Density (Hz)")
-    plt.title(f"Cluster {cluster_id} - Welch PSD (Smoothed with Gaussian Filter)")
-    plt.legend()
-    plt.grid()
-    plt.show()
-    
-    return center_freq
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import welch
-from scipy.ndimage import gaussian_filter1d
 from sklearn.mixture import GaussianMixture
 
 def estimate_bandwidth(iq_data, fs, cluster_id, n_components=2):
     nperseg = 1024
 
+    # --- Trim to Active Region ---
+    magnitude = np.abs(iq_data)
+    threshold = 0.05 * np.max(magnitude)
+    active_indices = np.where(magnitude > threshold)[0]
+
+    if len(active_indices) == 0:
+        print(f"[Cluster {cluster_id}] No significant pulse found.")
+        return None
+
+    start = max(active_indices[0] - 10, 0)
+    end = min(active_indices[-1] + 10, len(iq_data))
+    iq_data_trimmed = iq_data[start:end]
+
+
     # --- Compute PSD ---
-    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
+    freqs, psd = welch(iq_data_trimmed, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
     psd = psd / np.max(psd)  # Normalize
-    psd_smooth = gaussian_filter1d(psd, sigma=5)
+    psd_smooth = gaussian_filter1d(psd, sigma=1)
 
-    # Prepare data for GMM: frequency vs power
+    # --- Fit GMM ---
     X = freqs.reshape(-1, 1)
-    y = psd_smooth.reshape(-1, 1)
-
-    # Use PSD as weights in fitting
     gmm = GaussianMixture(n_components=n_components, covariance_type='full')
     gmm.fit(X)
 
     means = gmm.means_.flatten()
     stds = np.sqrt(np.array([np.diag(cov) for cov in gmm.covariances_])).flatten()
 
-    # Effective bandwidth: span of 2σ around all components
     lower = np.min(means - 2 * stds)
     upper = np.max(means + 2 * stds)
-    bandwidth = upper - lower
-    center_freq = (upper + lower) / 2
+    bandwidth_hz = upper - lower
+    bandwidth_mhz = bandwidth_hz / 1e6
 
-    # --- Plot ---
-    plt.figure(figsize=(10, 5))
+    # --- Optional Plot ---
+    plt.figure(figsize=(10, 4))
     plt.plot(freqs, psd_smooth, label="Smoothed PSD", color='green')
     for i in range(n_components):
         mu, sigma = means[i], stds[i]
         plt.axvline(mu, linestyle='--', color='blue', alpha=0.6, label=f"μ{i+1} = {mu:.1f} Hz")
-        plt.fill_betweenx([0, max(psd_smooth)], mu - 2*sigma, mu + 2*sigma,
-                          alpha=0.2, label=f"±2σ{i+1}", color='blue')
+        plt.fill_betweenx([0, max(psd_smooth)], mu - 2*sigma, mu + 2*sigma, alpha=0.2, color='blue', label=f"±2σ{i+1}")
     plt.axvline(lower, color='red', linestyle='--', label="Lower BW Limit")
     plt.axvline(upper, color='red', linestyle='--', label="Upper BW Limit")
-    plt.title(f"Cluster {cluster_id} - GMM Bandwidth Estimation")
+    plt.title(f"Cluster {cluster_id} - Estimated Bandwidth")
     plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Normalized Power")
+    plt.ylabel("Normalized PSD")
     plt.legend()
     plt.grid()
     plt.tight_layout()
     plt.show()
 
-    print(f"Estimated Center Frequency ≈ {center_freq:.2f} Hz")
-    print(f"Estimated Bandwidth (GMM, ±2σ span) ≈ {bandwidth:.2f} Hz")
-    return bandwidth
+    print(f"[Cluster {cluster_id}] Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+    return bandwidth_mhz
 
 
-#def estimate_bandwidth(iq_data, fs, cluster_id):
-    N = len(iq_data)
-    freqs = np.fft.fftfreq(N, d=1/fs)
-    spectrum = np.abs(np.fft.fft(iq_data))**2 
-    max_power = np.max(spectrum) 
-    threshold = max_power / 2
-
-    indices = np.where(spectrum >= threshold)[0]
-
-    if len(indices) > 0:
-        peak_idx = np.argmax(spectrum)
-        peak_range = spectrum[peak_idx - 50: peak_idx + 50] if peak_idx - 50 >= 0 else spectrum[:peak_idx + 50]
-        bw_start_idx = np.argmax(peak_range > threshold)
-        bw_end_idx = len(peak_range) - np.argmax(np.flip(peak_range) > threshold)
-
-        bw_low = freqs[indices[bw_start_idx]] / 1e6  
-        bw_high = freqs[indices[bw_end_idx]] / 1e6 
-        bw = bw_high - bw_low 
-    else:
-        bw = 0 
-        bw_low, bw_high = None, None
-
-    plt.figure(figsize=(8, 4))
-    plt.plot(freqs / 1e6, spectrum, label="Power Spectrum", color="blue")
-    if bw_low and bw_high:
-        plt.axvline(bw_low, color="green", linestyle="--", label=f"3 dB BW Start: {bw_low:.3f} MHz")
-        plt.axvline(bw_high, color="purple", linestyle="--", label=f"3 dB BW End: {bw_high:.3f} MHz")
-    plt.xlabel("Frequency (MHz)")
-    plt.ylabel("Power")
-    plt.title(f"Cluster {cluster_id} - 3 dB Bandwidth")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-    return bw
-
-def estimate_chirp_rate(iq_data, fs, cluster_id):
-    real_signal = np.real(iq_data)  # Extract the real part of the I/Q data
-    analytic_signal = hilbert(real_signal)  # Apply Hilbert transform
-    phase = np.unwrap(np.angle(analytic_signal))  # Unwrap phase
-    inst_freq = np.diff(phase) / (2 * np.pi * (1/fs))  # Compute instantaneous frequency
-
-    if len(inst_freq) > 1:
-        time = np.arange(len(inst_freq)) / fs
-        chirp_rate = np.polyfit(time, inst_freq, 1)[0] / 1e12  # Convert Hz/s → MHz/µs
-
-        # Plot Instantaneous Frequency
-        plt.figure(figsize=(8, 4))
-        plt.plot(time * 1e6, inst_freq / 1e6, label="Instantaneous Frequency", color="blue")
-        plt.xlabel("Time (µs)")
-        plt.ylabel("Frequency (MHz)")
-        plt.title(f"Cluster {cluster_id} - Instantaneous Frequency")
-        plt.axline((time[0] * 1e6, inst_freq[0] / 1e6), slope=chirp_rate * 1e6, color="red", linestyle="--", label=f"Chirp Rate: {chirp_rate:.3f} MHz/µs")
-        plt.legend()
-        plt.grid()
-        plt.show()
-    else:
-        chirp_rate = 0  # If not enough points for estimation
-
-    return chirp_rate
 
 # =============================================
 # === Compute and Print Radar Characteristics ===
 # =============================================
 
-def compute_radar_characteristics(isolated_pulses_data, fs):
-    radar_characteristics = {}
-
+def compute_bandwidths(isolated_pulses_data, fs):
+    bandwidths = {}
     for cluster_id, iq_data in isolated_pulses_data.items():
         if len(iq_data) > 1:
-            center_freq = estimate_center_frequency(iq_data, fs, cluster_id)
             bandwidth = estimate_bandwidth(iq_data, fs, cluster_id)
-            chirp_rate = estimate_chirp_rate(iq_data, fs, cluster_id)
         else:
-            center_freq, bandwidth, chirp_rate = None, None, None  # Handle empty signals
+            bandwidth = None
 
-        radar_characteristics[cluster_id] = {
-            "Center Frequency (MHz)": center_freq,
-            "Bandwidth (MHz)": bandwidth,
-            "Chirp Rate (MHz/µs)": chirp_rate
-        }
+        bandwidths[cluster_id] = bandwidth
 
-    # Print radar characteristics
-    print("\nRadar Signal Characteristics for Each Cluster:")
-    for cluster_id, characteristics in radar_characteristics.items():
-        print(f"\nCluster {cluster_id}:")
-        for key, value in characteristics.items():
-            if value is not None:
-                print(f"  {key}: {value:.6f}")  # Print values with 6 decimal places
-            else:
-                print(f"  {key}: N/A")
-    
-    return radar_characteristics
+    print("\nEstimated Bandwidths (MHz):")
+    for cid, bw in bandwidths.items():
+        if bw is not None:
+            print(f"  Cluster {cid}: {bw:.6f} MHz")
+        else:
+            print(f"  Cluster {cid}: N/A")
+    return bandwidths
 
-radar_characteristics = compute_radar_characteristics(isolated_pulses_data, sampling_rate)
+bandwidths = compute_bandwidths(isolated_pulses_data, sampling_rate)
+
