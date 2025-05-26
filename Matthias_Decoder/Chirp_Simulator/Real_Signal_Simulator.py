@@ -420,5 +420,3 @@ plt.axvline(iq_end_idx, color='g', linestyle='--', label='Mapped End')
 plt.legend()
 plt.title('IQ Data with Mapped Spectrogram Time Indices')
 plt.show()
-
-
