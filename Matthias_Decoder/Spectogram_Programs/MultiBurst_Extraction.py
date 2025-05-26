@@ -204,8 +204,8 @@ for selected_burst in burst_array:
             for cluster_id in np.unique(clusters):
                 if cluster_id != -1:  
                     cluster_points = time_freq_data[clusters == cluster_id]
-                    frequency_indices = bb[cluster_points[:, 0]]
-                    time_indices = cc[cluster_points[:, 1]]
+                    frequency_indices = bb[cluster_points[:, 0]] # Freq in Mhz
+                    time_indices = cc[cluster_points[:, 1]] # Time in mircoseconds
 
                     bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
                     center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
@@ -230,8 +230,8 @@ for selected_burst in burst_array:
                         'bandwidth': bandwidth,
                         'center_frequency': center_frequency,
                         'chirp_rate': chirp_rate,
-                        'start_time_index': np.min(time_indices),
-                        'end_time_index': np.max(time_indices),
+                        'start_time': np.min(time_indices),
+                        'end_time': np.max(time_indices),
                         'adjusted_start_time': adjusted_start_time,
                         'adjusted_end_time': adjusted_end_time,
                         'pulse_duration': pulse_duration
@@ -304,8 +304,8 @@ pulse_details = {
     "bandwidth": [],
     "center_frequency": [],
     "chirp_rate": [],
-    "start_time_index": [],
-    "end_time_index": [],
+    "start_time": [],
+    "end_time": [],
     "adjusted_start_time": [],
     "adjusted_end_time": [],
     "pulse_duration": [],
@@ -335,8 +335,8 @@ with conn:
         bandwidth REAL,
         center_frequency REAL,
         chirp_rate REAL,
-        start_time_index INTEGER,
-        end_time_index INTEGER,
+        start_time INTEGER,
+        end_time INTEGER,
         adjusted_start_time REAL,
         adjusted_end_time REAL,
         pulse_duration REAL,
@@ -386,7 +386,7 @@ with conn:
                     int(params["pulse_number"]),  # Global pulse number
                     int(params["burst_number"]),  # Burst number
                     bandwidth_hz, center_frequency_hz, chirp_rate_hz_per_sec,
-                    int(params["start_time_index"]), int(params["end_time_index"]),
+                    int(params["start_time"]), int(params["end_time"]),
                     adjusted_start_time_sec, adjusted_end_time_sec, pulse_duration_sec,
                     0,  # Set DOD to 0
                     toa_sec,  # TOA

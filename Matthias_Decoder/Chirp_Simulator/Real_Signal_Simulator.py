@@ -175,15 +175,6 @@ def adaptive_threshold(array, factor=1):
 
 threshold,aa = adaptive_threshold(aa)
 
-plt.figure(figsize=(10, 5))
-plt.imshow(np.flipud(aa), interpolation='none', aspect='auto', extent=[cc[-1], cc[0], bb[0], bb[-1]]) 
-plt.title('Targets')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
-plt.tight_layout()
-plt.show()
-
 # Radar data dimensions
 time_size = aa.shape[1] # Freq
 freq_size = aa.shape[0] # Time
@@ -197,41 +188,15 @@ hori_avg = 30
 alarm_rate = 1e-9
 
 cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
-
 padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
-
 alpha = Spectogram_FunctionsV3.set_alpha(Spectogram_FunctionsV3.get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
-
 thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
-
 aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
-plt.figure(figsize=(10, 5))
-plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[-1], cc[0], bb[0], bb[-1]])
-plt.title('Targets')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
-plt.tight_layout()
-
-# Assume aa_filtered_clean is the spectrogram in dB format
-aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
-# Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
+aa_filtered_clean = aa_db_filtered
 filtered_radar_data = aa * aa_filtered_clean
-
-# Create a new array to store the filtered spectrogram data (keep values where CFAR mask is non-zero)
-filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
+filtered_spectrogram_data = np.zeros_like(aa)
 filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
-
-# # Visualize the filtered spectrogram
-# plt.figure(figsize=(10, 5))
-# plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
-# plt.title("Filtered Spectrogram (Only Extracted Values)")
-# plt.colorbar(label="Intensity")
-# plt.xlabel("Time (samples)")
-# plt.ylabel("Frequency (Hz)")
-# plt.tight_layout()
-# plt.show()
 
 dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
 labeled_mask, num_labels = label(dilated_mask, connectivity=2, return_num=True)
@@ -243,7 +208,6 @@ min_aspect_ratio = 1
 
 filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
 
-# Debug visualization
 plt.figure(figsize=(10, 5))
 plt.imshow(dilated_mask, cmap='gray', origin='lower', aspect='auto')
 plt.title("Detected Regions and Filtered Slashes")
@@ -297,14 +261,14 @@ for region in regionprops(labeled_mask):
 plt.tight_layout()
 plt.show()
 
-# Display final filtered mask
-plt.figure(figsize=(10, 5))
-plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
-plt.title("Final Filtered Mask")
-plt.xlabel("Time (samples)")
-plt.ylabel("Frequency (Hz)")
-plt.tight_layout()
-plt.show()
+# # Display final filtered mask
+# plt.figure(figsize=(10, 5))
+# plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
+# plt.title("Final Filtered Mask")
+# plt.xlabel("Time (samples)")
+# plt.ylabel("Frequency (Hz)")
+# plt.tight_layout()
+# plt.show()
 
 # ---------------------------------------------------------
 print("Starting DBSCAN\n")
@@ -315,31 +279,30 @@ clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
 frequencies_mhz = bb[time_freq_data[:, 0]]  # frequency in MHz
 time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
 
-plt.figure(figsize=(10, 5))
-plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
-plt.title('DBSCAN Clustering of Chirp Signals')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Cluster ID')
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(10, 5))
+# plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
+# plt.title('DBSCAN Clustering of Chirp Signals')
+# plt.xlabel('Time [us]')
+# plt.ylabel('Frequency [MHz]')
+# plt.colorbar(label='Cluster ID')
+# plt.tight_layout()
+# plt.show()
 
-plt.figure(figsize=(10, 5))
-plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
-plt.title('Targets')
-plt.xlabel('Time [us]')
-plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+# plt.figure(figsize=(10, 5))
+# plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
+# plt.title('Targets')
+# plt.xlabel('Time [us]')
+# plt.ylabel('Frequency [MHz]')
 
-for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
-    cluster_points = time_freq_data[clusters == cluster]
-    cluster_time_us = cc[cluster_points[:, 1]]  # Time in us
-    cluster_freq_mhz = bb[cluster_points[:, 0]]  # Frequency in MHz
-    plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
+# for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
+#     cluster_points = time_freq_data[clusters == cluster]
+#     cluster_time_us = cc[cluster_points[:, 1]]  # Time in us
+#     cluster_freq_mhz = bb[cluster_points[:, 0]]  # Frequency in MHz
+#     plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
 
-plt.tight_layout()
-plt.legend()
-plt.show(block=True)
+# plt.tight_layout()
+# plt.legend()
+# plt.show(block=True)
 
 # Number of clusters (excluding noise)
 num_clusters = len(np.unique(clusters[clusters != -1]))
@@ -367,11 +330,12 @@ for cluster_id in np.unique(clusters):
         cluster_points = time_freq_data[clusters == cluster_id]
         frequency_indices = bb[cluster_points[:, 0]]
         
-        time_indices = cc[cluster_points[:, 1]]  # Time Indices in us
+        time_indices = [cluster_points[:, 1]]  # Time samples
+        time_stamps = cc[cluster_points[:, 1]]  # Time in us
         
         bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
         center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
-        time_span = np.max(time_indices) - np.min(time_indices)  # us
+        time_span = np.max(time_stamps) - np.min(time_stamps)  # us
         if time_span != 0:
             chirp_rate = bandwidth / time_span  # MHz per us
         else:
@@ -381,6 +345,8 @@ for cluster_id in np.unique(clusters):
             'bandwidth': bandwidth,
             'center_frequency': center_frequency,
             'chirp_rate': chirp_rate,
+            'start_time': np.min(time_stamps),
+            'end_time': np.max(time_stamps),
             'start_time_index': np.min(time_indices),
             'end_time_index': np.max(time_indices)
         }
@@ -390,26 +356,23 @@ for cluster_id, params in cluster_params.items():
     print(f"  Bandwidth: {params['bandwidth']} MHz")
     print(f"  Center Frequency: {params['center_frequency']} MHz")
     print(f"  Chirp Rate: {params['chirp_rate']} MHz/us")
-    print(f"  Start Time Index (us): {params['start_time_index']}")
-    print(f"  End Time Index (us): {params['end_time_index']}")
+    print(f"  Start Time (us): {params['start_time']}")
+    print(f"  End Time (us): {params['end_time']}")
+    print(f"  Start Time (Index): {params['start_time_index']}")
+    print(f"  End Time (Index): {params['end_time_index']}")
     print('---------------------------')
 
 # # Numpy Array conversition
 # cluster_params_array = np.array([[cluster_id, params['bandwidth'], params['center_frequency'], params['chirp_rate'], params['start_time_index'], params['end_time_index']]
 #                                  for cluster_id, params in cluster_params.items()])
 
-NFFT = 256
-noverlap = 200
-sampling_rate = fs
-time_step = (NFFT - noverlap) / sampling_rate  # seconds
-
 # Map cluster indices to I/Q start and end indices
 mapped_cluster_indices = {}
 for cluster_id, params in cluster_params.items():
-    start_time_idx = params['start_time_index']
-    end_time_idx = params['end_time_index']
-    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+    start_time_idx = params['start_time']
+    end_time_idx = params['end_time']
+    iq_start_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(start_time_idx, fs)
+    iq_end_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(end_time_idx, fs)
     mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
 
 # Initialize a dictionary to store isolated radar data for each cluster
@@ -419,7 +382,7 @@ isolated_pulses_data = {}
 for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
     isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)  # Zero-initialized array
     for idx in range(len(radar_section)):
-        if iq_start_idx <= idx <= iq_end_idx:  # Check if index is within the cluster range
+        if iq_start_idx <= idx <= iq_end_idx: 
             isolated_pulses_data[cluster_id][idx] = radar_section[idx]
 
 # Check if there are any isolated pulses data (i.e., clusters)
@@ -447,5 +410,15 @@ if len(isolated_pulses_data) > 0:
 
 else:
     print("No clusters detected, skipping the isolated I/Q data visualization.")
+
+plt.figure(figsize=(12, 4))
+plt.plot(np.abs(radar_section), label='IQ Magnitude')
+
+plt.axvline(iq_start_idx, color='r', linestyle='--', label='Mapped Start')
+plt.axvline(iq_end_idx, color='g', linestyle='--', label='Mapped End')
+
+plt.legend()
+plt.title('IQ Data with Mapped Spectrogram Time Indices')
+plt.show()
 
 

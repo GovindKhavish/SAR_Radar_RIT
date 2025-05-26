@@ -32,9 +32,9 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-# filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
-filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+filename = 's1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # Damascus VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
@@ -95,7 +95,7 @@ for idx_n in range(start_idx, end_idx + 1):
     ax = fig.add_subplot(111)
     scale = 'dB'
     aa, bb, cc, dd = ax.specgram(radar_data[idx_n, :], NFFT=256, Fs=fs / 1e6, detrend=None, window=np.hanning(256), scale=scale, noverlap=200, cmap='Greys')
-
+    # bb is in MHz and aa is in us as fs/1e6
     # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
     threshold,aa = Spectogram_FunctionsV3.adaptive_threshold(aa)
 
@@ -151,7 +151,6 @@ for idx_n in range(start_idx, end_idx + 1):
         if aspect_ratio < min_aspect_ratio:
             continue
 
-        # Compute slope and angle
         slope = height / width if width != 0 else float('inf')
         angle = np.degrees(np.arctan(slope))
         angle = abs(angle)
@@ -165,7 +164,6 @@ for idx_n in range(start_idx, end_idx + 1):
         coords = np.array(region.coords)
         y_vals, x_vals = coords[:, 0], coords[:, 1]
 
-        # RANSAC
         ransac = RANSACRegressor()
         ransac.fit(x_vals.reshape(-1, 1), y_vals)
 
@@ -202,14 +200,15 @@ for idx_n in range(start_idx, end_idx + 1):
         for cluster_id in np.unique(clusters):
             if cluster_id != -1:  
                 cluster_points = time_freq_data[clusters == cluster_id]
-                frequency_indices = bb[cluster_points[:, 0]]
-                time_indices = [cluster_points[:, 1]]
+                frequency_indices = bb[cluster_points[:, 0]] # Freq in Mhz
+                time_indices = [cluster_points[:, 1]] # Time Samples Index
 
                 bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
                 center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
                 time_span = np.max(time_indices) - np.min(time_indices)
                 chirp_rate = bandwidth / time_span if time_span != 0 else 0
 
+                time_indices = cc[cluster_points[:, 1]] # Time in us
                 start_time = np.min(time_indices)
                 end_time = np.max(time_indices)
 
@@ -230,8 +229,8 @@ for idx_n in range(start_idx, end_idx + 1):
                     'bandwidth': bandwidth,
                     'center_frequency': center_frequency,
                     'chirp_rate': chirp_rate,
-                    'start_time_index': np.min(time_indices),
-                    'end_time_index': np.max(time_indices),
+                    'start_time': np.min(time_indices),
+                    'end_time': np.max(time_indices),
                     'adjusted_start_time': adjusted_start_time,
                     'adjusted_end_time': adjusted_end_time,
                     'pulse_duration': pulse_duration
@@ -241,14 +240,6 @@ for idx_n in range(start_idx, end_idx + 1):
                 print(f"Start Time: {np.min(time_indices)} | End Time : {np.max(time_indices)}")
                 global_pulse_number += 1
 
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import welch
-from scipy.ndimage import gaussian_filter1d
-from sklearn.mixture import GaussianMixture
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch
@@ -256,17 +247,11 @@ from scipy.ndimage import gaussian_filter1d
 from sklearn.mixture import GaussianMixture
 
 def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99)):
-    from scipy.signal import welch
-    from scipy.ndimage import gaussian_filter1d
-    from sklearn.mixture import GaussianMixture
-    import numpy as np
-    import matplotlib.pyplot as plt
 
     nperseg = min(len(iq_data), 1024)
-
     freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
     psd = psd / np.max(psd)
-    psd_smooth = gaussian_filter1d(psd, sigma=1)
+    psd_smooth = gaussian_filter1d(psd, sigma=0.1)
 
     threshold = np.percentile(psd_smooth, percentile_thresh)
     mask = psd_smooth > threshold
@@ -288,7 +273,6 @@ def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, cove
             lowest_bic = bic
             best_gmm = gmm
 
-    # Evaluate PDF over full freq range
     pdf_vals = np.exp(best_gmm.score_samples(freqs.reshape(-1, 1)))
     pdf_vals /= np.max(pdf_vals)  # Normalize
     cdf = np.cumsum(pdf_vals)
@@ -319,10 +303,6 @@ def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, cove
 
 
 
-
-
-
-
 NFFT = 256
 noverlap = 200
 sampling_rate = fs
@@ -332,11 +312,11 @@ mapped_pulse_indices = {}
 
 for global_pulse_number, param_list in global_cluster_params.items():
     params = param_list[0]
-    start_time_idx = params['start_time_index']
-    end_time_idx = params['end_time_index']
+    start_time_idx = params['start_time']
+    end_time_idx = params['end_time']
     
-    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+    iq_start_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(start_time_idx, sampling_rate)
+    iq_end_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(end_time_idx, sampling_rate)
 
     mapped_pulse_indices[global_pulse_number] = (iq_start_idx, iq_end_idx)
 
@@ -345,7 +325,14 @@ bandwidth_results = {}
 
 for pulse_num, (iq_start_idx, iq_end_idx) in mapped_pulse_indices.items():
     # Isolate only the pure pulse I/Q data segment
-    pure_signal = radar_section[iq_start_idx:iq_end_idx+1]
+    extension = 1000  # samples to extend on both sides
+
+    start_idx = max(0, iq_start_idx - extension)
+    end_idx = min(len(radar_section), iq_end_idx + extension + 1)
+
+    pure_signal = radar_section[start_idx:end_idx]
+
+    #pure_signal = radar_section[iq_start_idx:iq_end_idx+1]
 
     # Store for plotting if needed
     isolated_pulses_data[pulse_num] = pure_signal

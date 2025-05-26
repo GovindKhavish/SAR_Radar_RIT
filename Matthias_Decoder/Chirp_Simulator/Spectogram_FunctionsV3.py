@@ -94,5 +94,8 @@ def detect_targets(radar_data, threshold_map):
 #-----------------------------------------------------------------------------------------
 #----------------------------IQ Data Indices ---------------------------------------------#
 def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
-    return (time_indices * time_step * sampling_rate).astype(int)
+    return ((time_indices*1e-6) * time_step * sampling_rate).astype(int)
+
+def spectrogram_time_us_to_iq_index(time_us, fs):
+    return (time_us * 1e-6 * fs).astype(int)
 #-----------------------------------------------------------------------------------------
