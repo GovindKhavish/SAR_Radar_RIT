@@ -5,6 +5,7 @@
 from __future__ import division, print_function, unicode_literals
 
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 #----------------------------------------------------------------------------------------#
 # -------------------- Adaptive Threshold on Intensity Data -----------------------------#
@@ -91,7 +92,6 @@ def detect_targets(radar_data, threshold_map):
     return target_map
 #-----------------------------------------------------------------------------------------
 # --------------------------- CFAR 1D  --------------------------- #
-# --------------------------- CFAR 1D  --------------------------- #
 def create_1d_mask(guard_cells, training_cells):
     guard_cells = int(guard_cells)
     training_cells = int(training_cells)
@@ -103,6 +103,8 @@ def create_1d_mask(guard_cells, training_cells):
 
     mask[:center - guard_cells] = 1 / total_training
     mask[center + guard_cells + 1:] = 1 / total_training
+
+    print(np.sum(mask[mask > 0]) == 1.0)
     
     return mask
 
@@ -113,6 +115,17 @@ def create_1d_padded_mask(signal, cfar_mask):
     padded_mask = np.zeros(signal_len)
     padded_mask[:mask_len] = cfar_mask
 
+    plt.figure(figsize=(12, 2))
+    plt.plot(padded_mask, color='purple', label='Padded CFAR Mask')
+    plt.title('Padded 1D CFAR Mask (placed at signal start)')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Mask Value')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
     return padded_mask
 
 def cfar_method_1d(signal, cfar_mask, threshold_multiplier):
@@ -120,7 +133,6 @@ def cfar_method_1d(signal, cfar_mask, threshold_multiplier):
 
     padded_mask = create_1d_padded_mask(signal_magnitude, cfar_mask)
     
-    # Shift mask so CUT is centered before FFT
     fft_mask = np.fft.fft(np.fft.fftshift(padded_mask))
     fft_signal = np.fft.fft(signal_magnitude)
 

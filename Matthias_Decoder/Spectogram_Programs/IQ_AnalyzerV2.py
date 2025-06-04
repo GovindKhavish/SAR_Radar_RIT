@@ -10,6 +10,7 @@ import Spectogram_FunctionsV3
 import matplotlib.pyplot as plt
 from skimage.measure import label, regionprops
 from scipy.signal import welch
+from skimage.filters import threshold_otsu
 from scipy.ndimage import gaussian_filter1d
 from sklearn.mixture import GaussianMixture
 from sklearn.linear_model import RANSACRegressor
@@ -31,9 +32,9 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
-filename = 's1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # Damascus VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
@@ -69,7 +70,7 @@ global_cluster_params = {}
 global_isolated_pulses_data = {}
 
 echo_bursts = l0file.burst_info[l0file.burst_info['Signal Type'] == 0]
-burst_array = np.array(echo_bursts['Burst'])
+burst_array = np.array(echo_bursts['Burst']) # type: ignore
 print("Echo Burst Numbers:", burst_array)
 
 
@@ -295,6 +296,79 @@ def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, cove
     print(f"[PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
     return bandwidth_mhz
 
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import welch
+from scipy.ndimage import gaussian_filter1d
+from sklearn.mixture import GaussianMixture
+
+def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99), method='gmm'):
+    # Step 1: Compute PSD
+    nperseg = min(len(iq_data), 1024)
+    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False, scaling='density')
+    psd = np.fft.fftshift(psd)
+    freqs = np.fft.fftshift(freqs)
+
+    psd = psd / np.max(psd)
+    psd_smooth = gaussian_filter1d(psd, sigma=0.1)
+
+    # Filter based on percentile
+    threshold = np.percentile(psd_smooth, percentile_thresh)
+    mask = psd_smooth > threshold
+    freqs_clean = freqs[mask]
+    psd_clean = psd_smooth[mask]
+
+    if method == 'gmm':
+        # Step 2: GMM Fit on PSD using replication
+        replication_factor = 1000
+        scaled_weights = (psd_clean * replication_factor).astype(int)
+        replicated_freqs = np.repeat(freqs_clean, scaled_weights)
+        X = replicated_freqs.reshape(-1, 1)
+
+        lowest_bic = np.inf
+        best_gmm = None
+        for n_components in range(1, max_components + 1):
+            gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=0)
+            gmm.fit(X)
+            bic = gmm.bic(X)
+            if bic < lowest_bic:
+                lowest_bic = bic
+                best_gmm = gmm
+
+        # PDF and CDF
+        freqs_sorted_idx = np.argsort(freqs)
+        freqs_sorted = freqs[freqs_sorted_idx]
+        pdf_vals = np.exp(best_gmm.score_samples(freqs_sorted.reshape(-1, 1)))
+        pdf_vals /= np.max(pdf_vals)
+        cdf = np.cumsum(pdf_vals)
+        cdf /= cdf[-1]
+
+        lower_idx = np.argmax(cdf >= coverage[0])
+        upper_idx = np.argmax(cdf >= coverage[1])
+
+        lower = freqs_sorted[lower_idx]
+        upper = freqs_sorted[upper_idx]
+        bandwidth_mhz = (upper - lower) / 1e6
+
+        # Plot
+        plt.figure(figsize=(10, 4))
+        plt.plot(freqs / 1e6, psd_smooth, label="Smoothed PSD", color='black')
+        plt.plot(freqs_sorted / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
+        plt.axvline(lower / 1e6, color='blue', linestyle=':', label=f"{int(coverage[0]*100)}% Threshold")
+        plt.axvline(upper / 1e6, color='green', linestyle=':', label=f"{int(coverage[1]*100)}% Threshold")
+        plt.title("Bandwidth Estimation via GMM PDF")
+        plt.xlabel("Frequency (MHz)")
+        plt.ylabel("Normalized Power")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        print(f"[GMM PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+
+    return bandwidth_mhz
+
+
 NFFT = 256
 noverlap = 200
 sampling_rate = fs
@@ -315,122 +389,169 @@ for global_pulse_number, param_list in global_cluster_params.items():
 isolated_pulses_data = {}
 bandwidth_results = {}
 
-# ---------------- CFAR Parameters ---------------- #
 for pulse_num, (iq_start_idx, iq_end_idx) in mapped_pulse_indices.items():
-    isolated_legnth = (iq_end_idx - iq_start_idx)
-    guard_cells = (iq_end_idx - iq_start_idx + 1) / 2
-    training_cells = (iq_end_idx - iq_start_idx + 1) / 2
-    cfar_mask = Spectogram_FunctionsV3.create_1d_mask(guard_cells, training_cells)
-
-    plt.figure(figsize=(8, 3))
-    plt.stem(cfar_mask, basefmt=" ", use_line_collection=True)
-    plt.title('1D CFAR Mask')
-    plt.xlabel('Cell Index')
-    plt.ylabel('Mask Value')
-    plt.grid(True)
-    plt.show()
-
-    extension = 2 * isolated_legnth
+    extension = 2 * (iq_end_idx - iq_start_idx)
     start_idx = max(0, iq_start_idx - extension)
     end_idx = min(len(radar_section), iq_end_idx + extension + 1)
     pure_signal = radar_section[start_idx:end_idx]
 
-    # ---------- CFAR 1D Filtering ---------- #
-    alpha = Spectogram_FunctionsV3.set_alpha((2 * training_cells), alarm_rate)
-    threshold_map = Spectogram_FunctionsV3.cfar_method_1d(pure_signal, cfar_mask, alpha)
+    signal_mag = np.abs(pure_signal)
+    otsu_thresh = threshold_otsu(signal_mag)
+    detection_map = (signal_mag > otsu_thresh).astype(int)
 
-    # Plot threshold map vs signal magnitude
-    plt.figure(figsize=(12, 4))
-    plt.plot(np.abs(pure_signal), label="|IQ Signal|", color='blue')
-    plt.plot(threshold_map, label="CFAR Threshold", color='orange', linestyle='--')
-    plt.title(f"Pulse {pulse_num} - CFAR Threshold vs Signal Magnitude")
-    plt.xlabel("Sample Index")
-    plt.ylabel("Amplitude")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-    detection_map = Spectogram_FunctionsV3.detect_targets_1d(pure_signal, threshold_map)
-    cfar_filtered_signal = pure_signal[detection_map == 1]
-
-    # Store all relevant info
     isolated_pulses_data[pulse_num] = {
-        'iq_data': pure_signal,
+        'iq_data': pure_signal, 
         'detection_mask': detection_map,
-        'threshold_map': threshold_map,
-        'cfar_filtered_signal': cfar_filtered_signal
+        'threshold_map': np.full_like(signal_mag, otsu_thresh),
+        'cfar_filtered_signal': pure_signal[detection_map == 1]
     }
 
-    # ---------- Plotting Detection Map ----------
+    # Plotting example (optional)
     plt.figure(figsize=(10, 4))
-    plt.plot(np.abs(pure_signal), label='|IQ Signal|', color='blue')
-
-    # Scale detection mask to match signal amplitude range
-    scaled_mask = detection_map * np.max(np.abs(pure_signal))
-    plt.plot(scaled_mask, label='CFAR Detection Mask (scaled)', color='green', linestyle='--')
-
-    plt.title(f"Pulse {pulse_num} - Magnitude with CFAR Detections")
-    plt.xlabel("Sample Index")
-    plt.ylabel("Amplitude")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-# ---------- Subplot Summary of All Pulses ----------
-if len(isolated_pulses_data) > 0:
-    fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(12, 5 * len(isolated_pulses_data)), sharex=True)
-    if len(isolated_pulses_data) == 1:
-        axes = [axes]
-
-    for idx, (pulse_num, data_dict) in enumerate(isolated_pulses_data.items()):
-        iq_data = data_dict['iq_data']
-        detection_mask = data_dict['detection_mask']
-        threshold_map = data_dict['threshold_map']
-
-        ax = axes[idx]
-        ax.plot(np.abs(iq_data), label="|IQ Signal|", color='blue', alpha=0.7)
-
-        threshold_scaled = threshold_map / np.max(threshold_map) * np.max(np.abs(iq_data))
-        ax.plot(threshold_scaled, label="CFAR Threshold (scaled)", color='orange', linestyle='--', alpha=0.7)
-
-        detected_indices = np.where(detection_mask == 1)[0]
-        ax.scatter(detected_indices, np.abs(iq_data)[detected_indices],
-                   color='green', marker='o', label='Detections', s=40)
-
-        ax.set_title(f"Pulse {pulse_num} - CFAR Detection Overview")
-        ax.set_xlabel("Sample Index")
-        ax.set_ylabel("Amplitude")
-        ax.legend()
-        ax.grid(True)
-
-    plt.tight_layout()
-    plt.show()
-else:
-    print("No pulses detected for visualization.")
-
-# ---------- Optional: Per-Pulse Final Plot ----------
-for pulse_num, data_dict in isolated_pulses_data.items():
-    iq_data = data_dict['iq_data']
-    detection_mask = data_dict['detection_mask']
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(np.abs(iq_data), label="|IQ Signal|", color='blue', alpha=0.7)
-
-    detected_indices = np.where(detection_mask == 1)[0]
-    plt.scatter(detected_indices, np.abs(iq_data)[detected_indices],
-                color='green', label='CFAR Detections', s=30)
-
-    plt.title(f"Pulse {pulse_num} - Magnitude with CFAR Detections")
+    plt.plot(signal_mag, label="|IQ Signal|", color='blue', alpha=0.7)
+    plt.plot(np.full_like(signal_mag, otsu_thresh), label="Otsu Threshold", color='orange', linestyle='--')
+    detected_indices = np.where(detection_map == 1)[0]
+    plt.scatter(detected_indices, signal_mag[detected_indices], color='green', label='Detections', s=30)
+    plt.title(f"Pulse {pulse_num} - Otsu Thresholding")
     plt.xlabel("Sample Index")
     plt.ylabel("Amplitude")
     plt.legend()
     plt.grid(True)
     plt.show()
 
+    # Estimate bandwidth from Otsu-filtered signal
+    filtered_signal = isolated_pulses_data[pulse_num]['cfar_filtered_signal']
+    if len(filtered_signal) > 0:
+        bandwidth_mhz = estimate_bandwidth(filtered_signal, fs=sampling_rate)
+        bandwidth = estimate_bandwidth(filtered_signal, fs=sampling_rate, method='gmm')
+        # or
+        #bandwidth = estimate_bandwidth(filtered_signal, fs=sampling_rate, method='percentile')
+
+    else:
+        bandwidth_mhz = 0.0  # Fallback if no detections
+
+    # Store result per pulse
+    bandwidth_results[pulse_num] = bandwidth_mhz
+    
+
+    # (Optional) Add to per-pulse dictionary for traceability
+    isolated_pulses_data[pulse_num]['bandwidth_mhz'] = bandwidth_mhz
+
+# # ---------------- CFAR Parameters ---------------- #
+# for pulse_num, (iq_start_idx, iq_end_idx) in mapped_pulse_indices.items():
+#     isolated_legnth = (iq_end_idx - iq_start_idx)
+#     total_cells = iq_end_idx - iq_start_idx + 1
+#     guard_cells =  10
+#     training_cells = 10
 
 
+#     cfar_mask = Spectogram_FunctionsV3.create_1d_mask(guard_cells, training_cells)
+
+#     plt.figure(figsize=(8, 3))
+#     plt.stem(cfar_mask, basefmt=" ")
+#     plt.title('1D CFAR Mask')
+#     plt.xlabel('Cell Index')
+#     plt.ylabel('Mask Value')
+#     plt.grid(True)
+#     plt.show()
+
+#     extension = 2 * isolated_legnth
+#     start_idx = max(0, iq_start_idx - extension)
+#     end_idx = min(len(radar_section), iq_end_idx + extension + 1)
+#     pure_signal = radar_section[start_idx:end_idx]
+
+#     # ---------- CFAR 1D Filtering ---------- #
+#     alpha = Spectogram_FunctionsV3.set_alpha((2 * training_cells), alarm_rate)
+#     threshold_map = Spectogram_FunctionsV3.cfar_method_1d(pure_signal, cfar_mask, alpha)
+
+#     plt.figure(figsize=(12, 4))
+#     plt.plot(np.abs(pure_signal), label="|IQ Signal|", color='blue')
+#     plt.plot(threshold_map, label="CFAR Threshold", color='orange', linestyle='--')
+#     plt.title(f"Pulse {pulse_num} - CFAR Threshold vs Signal Magnitude")
+#     plt.xlabel("Sample Index")
+#     plt.ylabel("Amplitude")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+#     detection_map = Spectogram_FunctionsV3.detect_targets_1d(pure_signal, threshold_map)
+#     cfar_filtered_signal = pure_signal[detection_map == 1]
+
+#     # Store all relevant info
+#     isolated_pulses_data[pulse_num] = {
+#         'iq_data': pure_signal,
+#         'detection_mask': detection_map,
+#         'threshold_map': threshold_map,
+#         'cfar_filtered_signal': cfar_filtered_signal
+#     }
+
+#     # ---------- Plotting Detection Map ----------
+#     plt.figure(figsize=(10, 4))
+#     plt.plot(np.abs(pure_signal), label='|IQ Signal|', color='blue')
+
+#     # Scale detection mask to match signal amplitude range
+#     scaled_mask = detection_map * np.max(np.abs(pure_signal))
+#     plt.plot(scaled_mask, label='CFAR Detection Mask (scaled)', color='green', linestyle='--')
+
+#     plt.title(f"Pulse {pulse_num} - Magnitude with CFAR Detections")
+#     plt.xlabel("Sample Index")
+#     plt.ylabel("Amplitude")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+# # ---------- Subplot Summary of All Pulses ----------
+# if len(isolated_pulses_data) > 0:
+#     fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(12, 5 * len(isolated_pulses_data)), sharex=True)
+#     if len(isolated_pulses_data) == 1:
+#         axes = [axes]
+
+#     for idx, (pulse_num, data_dict) in enumerate(isolated_pulses_data.items()):
+#         iq_data = data_dict['iq_data']
+#         detection_mask = data_dict['detection_mask']
+#         threshold_map = data_dict['threshold_map']
+
+#         ax = axes[idx]
+#         ax.plot(np.abs(iq_data), label="|IQ Signal|", color='blue', alpha=0.7)
+
+#         threshold_scaled = threshold_map / np.max(threshold_map) * np.max(np.abs(iq_data))
+#         ax.plot(threshold_scaled, label="CFAR Threshold (scaled)", color='orange', linestyle='--', alpha=0.7)
+
+#         detected_indices = np.where(detection_mask == 1)[0]
+#         ax.scatter(detected_indices, np.abs(iq_data)[detected_indices],
+#                    color='green', marker='o', label='Detections', s=40)
+
+#         ax.set_title(f"Pulse {pulse_num} - CFAR Detection Overview")
+#         ax.set_xlabel("Sample Index")
+#         ax.set_ylabel("Amplitude")
+#         ax.legend()
+#         ax.grid(True)
+
+#     plt.tight_layout()
+#     plt.show()
+# else:
+#     print("No pulses detected for visualization.")
+
+# # ---------- Optional: Per-Pulse Final Plot ----------
+# for pulse_num, data_dict in isolated_pulses_data.items():
+#     iq_data = data_dict['iq_data']
+#     detection_mask = data_dict['detection_mask']
+
+#     plt.figure(figsize=(10, 4))
+#     plt.plot(np.abs(iq_data), label="|IQ Signal|", color='blue', alpha=0.7)
+
+#     detected_indices = np.where(detection_mask == 1)[0]
+#     plt.scatter(detected_indices, np.abs(iq_data)[detected_indices],
+#                 color='green', label='CFAR Detections', s=30)
+
+#     plt.title(f"Pulse {pulse_num} - Magnitude with CFAR Detections")
+#     plt.xlabel("Sample Index")
+#     plt.ylabel("Amplitude")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.show()
 
 
 # # Print bandwidth results
@@ -441,57 +562,3 @@ for pulse_num, data_dict in isolated_pulses_data.items():
 #     else:
 #         print(f"Pulse {pulse_num}: Bandwidth estimation failed or unavailable.")
 
-# NFFT = 256
-# noverlap = 200
-# sampling_rate = fs
-# time_step = (NFFT - noverlap) / sampling_rate  # seconds
-
-# # --- Map global pulse numbers to I/Q start and end indices ---
-# mapped_pulse_indices = {}
-
-# for global_pulse_number, param_list in global_cluster_params.items():
-#     params = param_list[0]  # each global_pulse_number has a single dict in a list
-#     start_time_idx = params['start_time_index']
-#     end_time_idx = params['end_time_index']
-    
-#     iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-#     iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
-
-#     mapped_pulse_indices[global_pulse_number] = (iq_start_idx, iq_end_idx)
-
-# # --- Initialize a dictionary to store isolated radar data for each pulse ---
-# isolated_pulses_data = {}
-
-# # --- Populate the isolated I/Q data for each pulse ---
-# for pulse_num, (iq_start_idx, iq_end_idx) in mapped_pulse_indices.items():
-#     pulse_data = np.zeros_like(radar_section, dtype=complex)  # Zero-initialized array
-#     for idx in range(len(radar_section)):
-#         if iq_start_idx <= idx <= iq_end_idx:
-#             pulse_data[idx] = radar_section[idx]
-#     isolated_pulses_data[pulse_num] = pulse_data
-
-# # --- Visualization ---
-# if len(isolated_pulses_data) > 0:
-#     fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
-
-#     # If there's only one pulse, wrap axes in a list
-#     if len(isolated_pulses_data) == 1:
-#         axes = [axes]
-
-#     for idx, (pulse_num, iq_data) in enumerate(isolated_pulses_data.items()):
-#         axes[idx].plot(np.real(iq_data), label=f"Pulse {pulse_num} - Real", color='blue')
-#         axes[idx].plot(np.imag(iq_data), label=f"Pulse {pulse_num} - Imag", color='red')
-#         axes[idx].set_title(f"Pulse {pulse_num} - Isolated I/Q Data")
-#         axes[idx].set_xlabel("Index")
-#         axes[idx].set_ylabel("Amplitude")
-#         axes[idx].legend()
-
-#     plt.tight_layout()
-#     plt.show()
-# else:
-#     print("No pulses detected, skipping the isolated I/Q data visualization.")
-
-
-# ============================
-# === Bandwidth Estimation ===
-# ============================
