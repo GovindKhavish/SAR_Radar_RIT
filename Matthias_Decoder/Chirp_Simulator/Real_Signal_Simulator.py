@@ -12,7 +12,9 @@ from sklearn.cluster import DBSCAN
 from skimage.measure import label, regionprops
 from sklearn.linear_model import RANSACRegressor
 from skimage.morphology import binary_dilation
-import math
+from scipy.signal import welch
+from scipy.ndimage import gaussian_filter1d
+from sklearn.mixture import GaussianMixture
 
 #-----------------------------------------------------------------------------------------
 import sys
@@ -99,56 +101,107 @@ ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.show()
 
-#------------------------ Chirp Formulation--------------------------------
-fs = 46918402.8  # Hz
-bw = 5e6  # Hz
-fc = -4e6  # Hz
-chirp_duration_us = 20  # microseconds
-chirp_duration_s = chirp_duration_us * 1e-6  # seconds
-row_idx = 560  # Row index
-chirp_rate_fixed_bw = (bw / chirp_duration_s)  # Chirp rate Hz/s
+# ------------------------ Parameters ------------------------
+fs = 46918402.8  # Sampling frequency (Hz)
+bw = 5e6  # Bandwidth (Hz)
+fc = -4e6  # Center frequency offset (Hz)
+chirp_duration_us = 20  # Chirp duration in microseconds
+chirp_duration_s = chirp_duration_us * 1e-6
+row_idx = 560  # Row to inject chirp into
 
-bw_mhz = 3  # MHz
-chirp_rate_mhz_per_us = bw_mhz / chirp_duration_us
-print(f"Chirp Rate: {chirp_rate_mhz_per_us:.2f} MHz/us")
-
-# Generate chirp signal
-num_samples = int((chirp_duration_s) * fs) 
-T = num_samples / fs  
+# Time and chirp rate
+num_samples = int(chirp_duration_s * fs)
+T = num_samples / fs
 t = np.linspace(0, T, num_samples)
-start_freq = fc - bw / 2  
-end_freq = fc + bw / 2  
+chirp_rate = bw / chirp_duration_s
 
-chirp_signal = 50 * np.exp(1j * (2 * np.pi * (start_freq * t + 0.5 * chirp_rate_fixed_bw * t**2)))
+# Chirp start and end frequency
+start_freq = fc - bw / 2
+end_freq = fc + bw / 2
 
+# ---------------- Steep Rise/Fall and Sinusoidal Envelope Mod ----------------
+rise_steepness = 10   # Increase this value for sharper rise
+fall_steepness = 7    # Keep this the same or adjust separately
+
+rise_len = int(num_samples * 0.05)
+flat_len = int(num_samples * 0.8)
+fall_len = num_samples - rise_len - flat_len
+
+rise = (np.linspace(0, 1, rise_len)) ** rise_steepness
+fall = 1 - (np.linspace(0, 1, fall_len)) ** fall_steepness
+
+flat = np.ones(flat_len)
+
+# Envelope core
+envelope = np.concatenate([rise, flat, fall])
+
+# Apply very gentle sinusoidal amplitude modulation (system imperfection)
+mod_depth = 0.05  # 3% modulation
+mod_freq = 1.5    # cycles across full chirp
+modulation = 1 + mod_depth * np.sin(2 * np.pi * mod_freq * t / T)
+envelope *= modulation
+
+# Normalize
+envelope /= np.max(envelope)
+
+# ------------------------ Chirp Signal ------------------------
+phase = 2 * np.pi * (start_freq * t + 0.5 * chirp_rate * t**2)
+chirp_signal = 50 * envelope * np.exp(1j * phase)
+
+# # Add noise and slight DC bias
+# np.random.seed(42)
+# chirp_signal += (0.01 * np.random.randn(num_samples) + 1j * 0.01 * np.random.randn(num_samples))
+
+# ------------------------ Inject Into Radar Data ------------------------
 num_cols = radar_data.shape[1]
-start_idx = num_cols // 2  
-end_idx = start_idx + num_samples  
+start_idx = num_cols // 2
+end_idx = start_idx + num_samples
 
 if end_idx > num_cols:
-    raise ValueError("Chirp duration is too long for the row length.")
+    raise ValueError("Chirp duration exceeds radar data width.")
 
 radar_data_original = radar_data[row_idx, :].copy()
 
-# Padded
 chirp_signal_padded = np.zeros(num_cols, dtype=complex)
 chirp_signal_padded[start_idx:end_idx] = chirp_signal
-radar_data[row_idx, :] += chirp_signal_padded 
+radar_data[row_idx, :] += chirp_signal_padded
 
+# ------------------------ Overlay Plot ------------------------
 plt.figure(figsize=(10, 6))
-plt.plot(10 * np.log10(abs(radar_data[row_idx, :]) + np.finfo(float).eps), 'r', linewidth=1.5, label='Modified')
-plt.plot(10 * np.log10(abs(radar_data_original) + np.finfo(float).eps), 'k', linewidth=1.5, label='Original')
-
-plt.axvline(start_idx, linestyle='--', color='b', linewidth=1.5, label="Start")
-plt.axvline(end_idx, linestyle='--', color='b', linewidth=1.5, label="End")
-
-plt.xlabel('Fast Time Index', fontweight='bold')
-plt.ylabel('Magnitude (dB)', fontweight='bold')
-plt.title(f'Overlay of Row {row_idx} Before and After Chirp Injection', fontweight='bold')
+plt.plot(10 * np.log10(np.abs(radar_data[row_idx, :]) + 1e-12), 'r', label='Modified')
+plt.plot(10 * np.log10(np.abs(radar_data_original) + 1e-12), 'k', label='Original')
+plt.axvline(start_idx, linestyle='--', color='b', label='Chirp Start')
+plt.axvline(end_idx, linestyle='--', color='b', label='Chirp End')
+plt.xlabel('Fast Time Index')
+plt.ylabel('Magnitude (dB)')
+plt.title(f'Overlay of Row {row_idx} Before and After Chirp Injection')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.show()
+
+# ------------------------ Envelope Plot ------------------------
+plt.figure(figsize=(8, 4))
+plt.plot(t * 1e6, envelope)
+plt.title("Realistic Amplitude Envelope (Steep Rise/Fall + Modulation)")
+plt.xlabel("Time (µs)")
+plt.ylabel("Normalized Amplitude")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# ------------------------ IQ Signal Plot ------------------------
+plt.figure(figsize=(10, 4))
+plt.plot(np.real(chirp_signal), label='I (In-phase)')
+plt.plot(np.imag(chirp_signal), label='Q (Quadrature)')
+plt.title("Injected Chirp IQ Components (Air Defense Emulation)")
+plt.xlabel("Sample Index")
+plt.ylabel("Amplitude")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
 # ----------------- Spectrogram  -------------------
 fig = plt.figure(11, figsize=(6, 6), clear=True)
 ax = fig.add_subplot(111)
@@ -322,6 +375,61 @@ for cluster_id in np.unique(clusters):
 
         cluster_time_indices[cluster_id] = (start_time_index, end_time_index)
 
+def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99)):
+
+    nperseg = min(len(iq_data), 1024)
+    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
+    psd = psd / np.max(psd)
+    psd_smooth = gaussian_filter1d(psd, sigma=0.1)
+
+    threshold = np.percentile(psd_smooth, percentile_thresh)
+    mask = psd_smooth > threshold
+    freqs_clean = freqs[mask]
+    psd_clean = psd_smooth[mask]
+
+    replication_factor = 1000
+    scaled_weights = (psd_clean * replication_factor).astype(int)
+    replicated_freqs = np.repeat(freqs_clean, scaled_weights)
+    X = replicated_freqs.reshape(-1, 1)
+
+    lowest_bic = np.inf
+    best_gmm = None
+    for n_components in range(1, max_components + 1):
+        gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=0)
+        gmm.fit(X)
+        bic = gmm.bic(X)
+        if bic < lowest_bic:
+            lowest_bic = bic
+            best_gmm = gmm
+
+    pdf_vals = np.exp(best_gmm.score_samples(freqs.reshape(-1, 1)))
+    pdf_vals /= np.max(pdf_vals)  # Normalize
+    cdf = np.cumsum(pdf_vals)
+    cdf /= cdf[-1]
+
+    lower_idx = np.argmax(cdf >= coverage[0])
+    upper_idx = np.argmax(cdf >= coverage[1])
+
+    lower = freqs[lower_idx]
+    upper = freqs[upper_idx]
+    bandwidth_mhz = (upper - lower) / 1e6
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(freqs / 1e6, psd_smooth, label="Smoothed PSD", color='black')
+    plt.plot(freqs / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
+    plt.axvline(lower / 1e6, color='blue', linestyle=':', label=f"{int(coverage[0]*100)}% Threshold")
+    plt.axvline(upper / 1e6, color='green', linestyle=':', label=f"{int(coverage[1]*100)}% Threshold")
+    plt.title("Bandwidth Estimation via GMM PDF")
+    plt.xlabel("Frequency (MHz)")
+    plt.ylabel("Normalized Power")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    print(f"[PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+    return bandwidth_mhz
+
 # Extract Cluster Parameters
 cluster_params = {}
 
@@ -366,7 +474,6 @@ for cluster_id, params in cluster_params.items():
 # cluster_params_array = np.array([[cluster_id, params['bandwidth'], params['center_frequency'], params['chirp_rate'], params['start_time_index'], params['end_time_index']]
 #                                  for cluster_id, params in cluster_params.items()])
 
-# Map cluster indices to I/Q start and end indices
 mapped_cluster_indices = {}
 for cluster_id, params in cluster_params.items():
     start_time_idx = params['start_time']
@@ -375,31 +482,36 @@ for cluster_id, params in cluster_params.items():
     iq_end_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(end_time_idx, fs)
     mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
 
-# Initialize a dictionary to store isolated radar data for each cluster
 isolated_pulses_data = {}
-
-# Populate the isolated I/Q data for each cluster
 for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
-    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)  # Zero-initialized array
+    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)
     for idx in range(len(radar_section)):
-        if iq_start_idx <= idx <= iq_end_idx: 
+        if iq_start_idx <= idx <= iq_end_idx:
             isolated_pulses_data[cluster_id][idx] = radar_section[idx]
 
-# Check if there are any isolated pulses data (i.e., clusters)
-if len(isolated_pulses_data) > 0:
-    # Visualize the isolated data for each cluster
-    fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
+# ------------------ GMM Bandwidth Estimation ------------------
+gmm_bandwidths = {}
+for cluster_id, iq_data in isolated_pulses_data.items():
+    if np.any(iq_data):
+        print(f"\nEstimating bandwidth for Cluster {cluster_id} using GMM:")
+        gmm_bw = estimate_bandwidth(iq_data, fs)
+        gmm_bandwidths[cluster_id] = gmm_bw
+    else:
+        print(f"\nCluster {cluster_id} has no valid I/Q data. Skipping GMM bandwidth estimation.")
 
-    # If there's only one cluster, make sure axes is not a list
+print("\n=== Summary of GMM-Based Bandwidths ===")
+for cluster_id in gmm_bandwidths:
+    print(f"Cluster {cluster_id} - GMM Estimated Bandwidth: {gmm_bandwidths[cluster_id]:.3f} MHz")
+
+# ------------------ Visualization ------------------
+if len(isolated_pulses_data) > 0:
+    fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
     if len(isolated_pulses_data) == 1:
         axes = [axes]
 
-    # Plot each cluster's isolated I/Q data
     for idx, (cluster_id, iq_data) in enumerate(isolated_pulses_data.items()):
-        # Plot the I/Q data (real and imaginary parts)
         axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
         axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
-        
         axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
         axes[idx].set_xlabel("Index")
         axes[idx].set_ylabel("Amplitude")
@@ -407,16 +519,97 @@ if len(isolated_pulses_data) > 0:
 
     plt.tight_layout()
     plt.show()
-
 else:
     print("No clusters detected, skipping the isolated I/Q data visualization.")
 
 plt.figure(figsize=(12, 4))
 plt.plot(np.abs(radar_section), label='IQ Magnitude')
-
 plt.axvline(iq_start_idx, color='r', linestyle='--', label='Mapped Start')
 plt.axvline(iq_end_idx, color='g', linestyle='--', label='Mapped End')
-
 plt.legend()
 plt.title('IQ Data with Mapped Spectrogram Time Indices')
 plt.show()
+
+
+
+# NFFT = 256
+# noverlap = 200
+# sampling_rate = fs
+# time_step = (NFFT - noverlap) / sampling_rate  # seconds
+
+# mapped_pulse_indices = {}
+
+# for global_pulse_number, param_list in global_cluster_params.items():
+#     params = param_list[0]
+#     start_time_idx = params['start_time']
+#     end_time_idx = params['end_time']
+    
+#     iq_start_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(start_time_idx, sampling_rate)
+#     iq_end_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(end_time_idx, sampling_rate)
+
+#     mapped_pulse_indices[global_pulse_number] = (iq_start_idx, iq_end_idx)
+
+# isolated_pulses_data = {}
+# bandwidth_results = {}
+
+# for pulse_num, (iq_start_idx, iq_end_idx) in mapped_pulse_indices.items():
+#     # Isolate only the pure pulse I/Q data segment
+#     extension = 1000  # samples to extend on both sides
+
+#     start_idx = max(0, iq_start_idx - extension)
+#     end_idx = min(len(radar_section), iq_end_idx + extension + 1)
+
+#     pure_signal = radar_section[start_idx:end_idx]
+
+#     #pure_signal = radar_section[iq_start_idx:iq_end_idx+1]
+
+#     # Store for plotting if needed
+#     isolated_pulses_data[pulse_num] = pure_signal
+    
+#     # Estimate bandwidth on pure signal only (no zero-padding)
+#     bw = estimate_bandwidth(pure_signal, sampling_rate)
+#     bandwidth_results[pulse_num] = bw
+
+
+# # Your existing plot code for real and imaginary parts
+# if len(isolated_pulses_data) > 0:
+#     fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
+#     if len(isolated_pulses_data) == 1:
+#         axes = [axes]
+
+#     for idx, (pulse_num, iq_data) in enumerate(isolated_pulses_data.items()):
+#         axes[idx].plot(np.real(iq_data), label=f"Pulse {pulse_num} - Real", color='blue')
+#         axes[idx].plot(np.imag(iq_data), label=f"Pulse {pulse_num} - Imag", color='red')
+#         axes[idx].set_title(f"Pulse {pulse_num} - Isolated I/Q Data")
+#         axes[idx].set_xlabel("Sample Index")
+#         axes[idx].set_ylabel("Amplitude")
+#         axes[idx].legend()
+
+#     plt.tight_layout()
+#     plt.show()
+
+#     # New figure for absolute values of I/Q data
+#     fig_abs, axes_abs = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True)
+#     if len(isolated_pulses_data) == 1:
+#         axes_abs = [axes_abs]
+
+#     for idx, (pulse_num, iq_data) in enumerate(isolated_pulses_data.items()):
+#         axes_abs[idx].plot(np.abs(iq_data), label=f"Pulse {pulse_num} - |I/Q|", color='green')
+#         axes_abs[idx].set_title(f"Pulse {pulse_num} - Magnitude of I/Q Data")
+#         axes_abs[idx].set_xlabel("Sample Index")
+#         axes_abs[idx].set_ylabel("Magnitude")
+#         axes_abs[idx].legend()
+
+#     plt.tight_layout()
+#     plt.show()
+
+# else:
+#     print("No pulses detected for visualization.")
+
+# # Print bandwidth results summary
+# print("\nEstimated Bandwidths (MHz) for each pulse:")
+# for pulse_num, bw in bandwidth_results.items():
+#     if bw is not None:
+#         print(f"Pulse {pulse_num}: {bw:.6f} MHz")
+#     else:
+#         print(f"Pulse {pulse_num}: Bandwidth estimation failed or unavailable.")

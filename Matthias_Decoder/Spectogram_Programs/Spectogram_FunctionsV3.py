@@ -73,7 +73,7 @@ def cfar_method(radar_data, cfar_mask, threshold_multiplier):
     
     threshold_map = np.abs(np.fft.ifft2(np.fft.fftshift(fft_threshold)))
     threshold_map *= threshold_multiplier
-    
+
     return threshold_map
 
 ### Detection ###
@@ -81,17 +81,61 @@ def detect_targets(radar_data, threshold_map):
     target_map = np.zeros_like(radar_data)
     len_row, len_col = radar_data.shape 
 
-    hits = 0
     for row in range(len_row):
         for col in range(len_col):
             if np.abs(radar_data[row, col]) > threshold_map[row, col]:
                 target_map[row, col] = 1
-                hits += 1
             else:
                 target_map[row, col] = 0
     
     return target_map
 #-----------------------------------------------------------------------------------------
+# --------------------------- CFAR 1D  --------------------------- #
+# --------------------------- CFAR 1D  --------------------------- #
+def create_1d_mask(guard_cells, training_cells):
+    guard_cells = int(guard_cells)
+    training_cells = int(training_cells)
+    total_length = 2 * (guard_cells + training_cells) + 1
+    mask = np.zeros(total_length)
+    
+    center = guard_cells + training_cells
+    total_training = 2 * training_cells
+
+    mask[:center - guard_cells] = 1 / total_training
+    mask[center + guard_cells + 1:] = 1 / total_training
+    
+    return mask
+
+def create_1d_padded_mask(signal, cfar_mask):
+    signal_len = len(signal)
+    mask_len = len(cfar_mask)
+
+    padded_mask = np.zeros(signal_len)
+    padded_mask[:mask_len] = cfar_mask
+
+    return padded_mask
+
+def cfar_method_1d(signal, cfar_mask, threshold_multiplier):
+    signal_magnitude = np.abs(signal)
+
+    padded_mask = create_1d_padded_mask(signal_magnitude, cfar_mask)
+    
+    # Shift mask so CUT is centered before FFT
+    fft_mask = np.fft.fft(np.fft.fftshift(padded_mask))
+    fft_signal = np.fft.fft(signal_magnitude)
+
+    fft_product = fft_signal * fft_mask
+    threshold_map = np.abs(np.fft.ifft(fft_product))
+
+    threshold_map *= threshold_multiplier
+
+    return threshold_map
+
+
+def detect_targets_1d(signal, threshold_map):
+    signal_magnitude = np.abs(signal)
+    return (signal_magnitude > threshold_map).astype(int)
+
 #----------------------------IQ Data Indices ---------------------------------------------#
 def spectrogram_to_iq_indices(time_indices, sampling_rate, time_step):
     return (time_indices * time_step * sampling_rate).astype(int)
