@@ -174,30 +174,23 @@ plt.ylabel('Frequency [MHz]',fontsize = psize)
 plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
-# Assume aa_filtered_clean is the spectrogram in dB format
-aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
-
-# Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
+aa_filtered_clean = aa_db_filtered 
 filtered_radar_data = aa * aa_filtered_clean
-
-# Create a new array to store the filtered spectrogram data (keep values where CFAR mask is non-zero)
 filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
 filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
 # # Visualize the filtered spectrogram
-# plt.figure(figsize=(10, 5))
-# plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
-# plt.title("Filtered Spectrogram (Only Extracted Values)")
-# plt.colorbar(label="Intensity")
-# plt.xlabel("Time (samples)")
-# plt.ylabel("Frequency (Hz)")
-# plt.tight_layout()
-# plt.show()
+plt.figure(figsize=(10, 5))
+plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
+plt.title("Filtered Spectrogram (Only Extracted Values)")
+plt.colorbar(label="Intensity")
+plt.xlabel("Time (samples)")
+plt.ylabel("Frequency (Hz)")
+plt.tight_layout()
+plt.show()
 
-# Label the connected components in the dilated binary mask
 labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
-# Define thresholds
 min_angle = 30
 max_angle = 75
 min_diagonal_length = 15
@@ -281,9 +274,7 @@ plt.show()
 time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
 # DBSCAN Clustering
 clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
-# Map the frequency indices to MHz
-frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
-# Map the time indices to microseconds
+frequencies_mhz = bb[time_freq_data[:, 0]]  
 time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
 
 plt.figure(figsize=(10, 5))
@@ -382,8 +373,8 @@ mapped_cluster_indices = {}
 for cluster_id, params in cluster_params.items():
     start_time_idx = params['start_time_index']
     end_time_idx = params['end_time_index']
-    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+    iq_start_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(start_time_idx, sampling_rate)
+    iq_end_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(end_time_idx, sampling_rate)
     mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
 
 # Initialize a dictionary to store isolated radar data for each cluster

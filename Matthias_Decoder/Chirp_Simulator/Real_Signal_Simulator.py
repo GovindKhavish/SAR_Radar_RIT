@@ -120,24 +120,29 @@ start_freq = fc - bw / 2
 end_freq = fc + bw / 2
 
 # ---------------- Steep Rise/Fall and Sinusoidal Envelope Mod ----------------
-rise_steepness = 10   # Increase this value for sharper rise
-fall_steepness = 7    # Keep this the same or adjust separately
+rise_steepness = 7
+fall_steepness = 4
 
-rise_len = int(num_samples * 0.05)
-flat_len = int(num_samples * 0.8)
-fall_len = num_samples - rise_len - flat_len
+# Control rise and fall lengths as fractions of total samples
+rise_len = int(num_samples * 0.05)  # 5% rise
+fall_len = int(num_samples * 0.45)   # 20% fall — you can change this to control fall length
+
+# Flat length is what's left
+flat_len = num_samples - rise_len - fall_len
+
+if flat_len < 0:
+    raise ValueError("rise_len + fall_len exceeds total number of samples")
 
 rise = (np.linspace(0, 1, rise_len)) ** rise_steepness
 fall = 1 - (np.linspace(0, 1, fall_len)) ** fall_steepness
 
-flat = np.ones(flat_len)
+flat = np.linspace(1, 0.98, flat_len)
 
-# Envelope core
 envelope = np.concatenate([rise, flat, fall])
 
-# Apply very gentle sinusoidal amplitude modulation (system imperfection)
-mod_depth = 0.05  # 3% modulation
-mod_freq = 1.5    # cycles across full chirp
+# Apply gentle sinusoidal amplitude modulation
+mod_depth = 0.01
+mod_freq = 1
 modulation = 1 + mod_depth * np.sin(2 * np.pi * mod_freq * t / T)
 envelope *= modulation
 
@@ -146,7 +151,7 @@ envelope /= np.max(envelope)
 
 # ------------------------ Chirp Signal ------------------------
 phase = 2 * np.pi * (start_freq * t + 0.5 * chirp_rate * t**2)
-chirp_signal = 50 * envelope * np.exp(1j * phase)
+chirp_signal = 200 * np.exp(1j * phase)
 
 # # Add noise and slight DC bias
 # np.random.seed(42)
@@ -375,17 +380,18 @@ for cluster_id in np.unique(clusters):
 
         cluster_time_indices[cluster_id] = (start_time_index, end_time_index)
 
-def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99)):
+def estimate_bandwidth(iq_data, fs, max_components=10, coverage=(0.01, 0.99)):
 
     nperseg = min(len(iq_data), 1024)
-    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
+    freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False, scaling='density')
+    psd = np.fft.fftshift(psd)
+    freqs = np.fft.fftshift(freqs)
+
     psd = psd / np.max(psd)
     psd_smooth = gaussian_filter1d(psd, sigma=0.1)
 
-    threshold = np.percentile(psd_smooth, percentile_thresh)
-    mask = psd_smooth > threshold
-    freqs_clean = freqs[mask]
-    psd_clean = psd_smooth[mask]
+    freqs_clean = freqs
+    psd_clean = psd_smooth
 
     replication_factor = 1000
     scaled_weights = (psd_clean * replication_factor).astype(int)
@@ -402,33 +408,94 @@ def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, cove
             lowest_bic = bic
             best_gmm = gmm
 
-    pdf_vals = np.exp(best_gmm.score_samples(freqs.reshape(-1, 1)))
-    pdf_vals /= np.max(pdf_vals)  # Normalize
+    # PDF and CDF
+    freqs_sorted_idx = np.argsort(freqs)
+    freqs_sorted = freqs[freqs_sorted_idx]
+    pdf_vals = np.exp(best_gmm.score_samples(freqs_sorted.reshape(-1, 1)))
+    pdf_vals /= np.max(pdf_vals)
     cdf = np.cumsum(pdf_vals)
     cdf /= cdf[-1]
 
     lower_idx = np.argmax(cdf >= coverage[0])
     upper_idx = np.argmax(cdf >= coverage[1])
 
-    lower = freqs[lower_idx]
-    upper = freqs[upper_idx]
+    lower = freqs_sorted[lower_idx]
+    upper = freqs_sorted[upper_idx]
     bandwidth_mhz = (upper - lower) / 1e6
 
+    # Plot
     plt.figure(figsize=(10, 4))
     plt.plot(freqs / 1e6, psd_smooth, label="Smoothed PSD", color='black')
-    plt.plot(freqs / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
+    plt.plot(freqs_sorted / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
     plt.axvline(lower / 1e6, color='blue', linestyle=':', label=f"{int(coverage[0]*100)}% Threshold")
     plt.axvline(upper / 1e6, color='green', linestyle=':', label=f"{int(coverage[1]*100)}% Threshold")
     plt.title("Bandwidth Estimation via GMM PDF")
     plt.xlabel("Frequency (MHz)")
-    plt.ylabel("Normalized Power")
+    plt.ylabel("Power")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.show()
 
-    print(f"[PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+    print(f"[GMM PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+
     return bandwidth_mhz
+
+
+# def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99)):
+
+#     nperseg = min(len(iq_data), 1024)
+#     freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
+#     psd = psd / np.max(psd)
+#     psd_smooth = gaussian_filter1d(psd, sigma=0.1)
+
+#     threshold = np.percentile(psd_smooth, percentile_thresh)
+#     mask = psd_smooth > threshold
+#     freqs_clean = freqs[mask]
+#     psd_clean = psd_smooth[mask]
+
+#     replication_factor = 1000
+#     scaled_weights = (psd_clean * replication_factor).astype(int)
+#     replicated_freqs = np.repeat(freqs_clean, scaled_weights)
+#     X = replicated_freqs.reshape(-1, 1)
+
+#     lowest_bic = np.inf
+#     best_gmm = None
+#     for n_components in range(1, max_components + 1):
+#         gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=0)
+#         gmm.fit(X)
+#         bic = gmm.bic(X)
+#         if bic < lowest_bic:
+#             lowest_bic = bic
+#             best_gmm = gmm
+
+#     pdf_vals = np.exp(best_gmm.score_samples(freqs.reshape(-1, 1)))
+#     pdf_vals /= np.max(pdf_vals)  # Normalize
+#     cdf = np.cumsum(pdf_vals)
+#     cdf /= cdf[-1]
+
+#     lower_idx = np.argmax(cdf >= coverage[0])
+#     upper_idx = np.argmax(cdf >= coverage[1])
+
+#     lower = freqs[lower_idx]
+#     upper = freqs[upper_idx]
+#     bandwidth_mhz = (upper - lower) / 1e6
+
+#     plt.figure(figsize=(10, 4))
+#     plt.plot(freqs / 1e6, psd_smooth, label="Smoothed PSD", color='black')
+#     plt.plot(freqs / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
+#     plt.axvline(lower / 1e6, color='blue', linestyle=':', label=f"{int(coverage[0]*100)}% Threshold")
+#     plt.axvline(upper / 1e6, color='green', linestyle=':', label=f"{int(coverage[1]*100)}% Threshold")
+#     plt.title("Bandwidth Estimation via GMM PDF")
+#     plt.xlabel("Frequency (MHz)")
+#     plt.ylabel("Normalized Power")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+#     print(f"[PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+#     return bandwidth_mhz
 
 # Extract Cluster Parameters
 cluster_params = {}
@@ -524,8 +591,8 @@ else:
 
 plt.figure(figsize=(12, 4))
 plt.plot(np.abs(radar_section), label='IQ Magnitude')
-plt.axvline(iq_start_idx, color='r', linestyle='--', label='Mapped Start')
-plt.axvline(iq_end_idx, color='g', linestyle='--', label='Mapped End')
+#plt.axvline(iq_start_idx, color='r', linestyle='--', label='Mapped Start')
+#plt.axvline(iq_end_idx, color='g', linestyle='--', label='Mapped End')
 plt.legend()
 plt.title('IQ Data with Mapped Spectrogram Time Indices')
 plt.show()

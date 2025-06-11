@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from skimage.measure import label, regionprops
 from scipy.signal import welch
 from skimage.filters import threshold_otsu
-from scipy.ndimage import gaussian_filter1d
+from scipy.ndimage import gaussian_filter1d, uniform_filter1d
 from sklearn.mixture import GaussianMixture
 from sklearn.linear_model import RANSACRegressor
 from sklearn.cluster import DBSCAN
@@ -20,6 +20,10 @@ import sys
 from pathlib import Path
 #-----------------------------------------------------------------------------------------
 # Define the subdirectory path
+
+from skimage import filters
+print(filters.threshold_otsu)
+
 _simraddir = Path(r'C:\Users\govin\OneDrive\Documents\Git Repositories\Matthias_Decoder\sentinel1decoder (1)\sentinel1decoder')
 
 # Check if the subdirectory exists
@@ -32,9 +36,9 @@ else:
 import sentinel1decoder
 
 # Mipur VH Filepath
-filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
-#filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
-filename = '\s1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
+#filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Mipur_India\S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE"
+filepath = r"/Users/khavishgovind/Library/CloudStorage/OneDrive-UniversityofCapeTown/Masters/Data/Mipur_India/S1A_IW_RAW__0SDV_20220115T130440_20220115T130513_041472_04EE76_AB32.SAFE/"
+filename = 's1a-iw-raw-s-vh-20220115t130440-20220115t130513-041472-04ee76.dat'
 
 # Damascus VH Filepath
 # filepath = r"C:\Users\govin\UCT_OneDrive\OneDrive - University of Cape Town\Masters\Data\Damascus_Syria\S1A_IW_RAW__0SDV_20190219T033515_20190219T033547_025993_02E57A_C90C.SAFE"
@@ -82,7 +86,7 @@ print(f"Processing Burst {selected_burst}...")
 radar_data = l0file.get_burst_data(selected_burst)
 
 #------------------------ Apply CFAR filtering --------------------------------
-p = 1102
+p = 1350
 start_idx = p
 end_idx = p #radar_data.shape[0] - 1 
 fs = 46918402.800000004  
@@ -90,6 +94,14 @@ fs = 46918402.800000004
 for idx_n in range(start_idx, end_idx + 1):
     radar_section = radar_data[idx_n, :]
     slow_time_offset = idx_n / fs 
+    plt.figure(figsize=(14, 6))
+    plt.plot(np.abs(radar_section), color='b', linewidth=1.5)
+    plt.xlabel('Sample Index', fontweight='bold')
+    plt.ylabel('Magnitude', fontweight='bold')
+    plt.title(f'Absolute Value of IQ Data for Row {idx_n}', fontweight='bold')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
     # ------------------ Spectrogram Data with Local Adaptive Thresholding -------------------
     fig = plt.figure(11, figsize=(6, 6), clear=True)
@@ -202,16 +214,15 @@ for idx_n in range(start_idx, end_idx + 1):
             if cluster_id != -1:  
                 cluster_points = time_freq_data[clusters == cluster_id]
                 frequency_indices = bb[cluster_points[:, 0]] # Freq in Mhz
-                time_indices = [cluster_points[:, 1]] # Time Samples Index
-
-                bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
-                center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
-                time_span = np.max(time_indices) - np.min(time_indices)
-                chirp_rate = bandwidth / time_span if time_span != 0 else 0
 
                 time_indices = cc[cluster_points[:, 1]] # Time in us
                 start_time = np.min(time_indices)
                 end_time = np.max(time_indices)
+
+                bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
+                center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
+                time_span = start_time - end_time
+                chirp_rate = bandwidth / time_span if time_span != 0 else 0
 
                 adjusted_start_time = start_time + slow_time_offset
                 adjusted_end_time = end_time + slow_time_offset
@@ -230,8 +241,8 @@ for idx_n in range(start_idx, end_idx + 1):
                     'bandwidth': bandwidth,
                     'center_frequency': center_frequency,
                     'chirp_rate': chirp_rate,
-                    'start_time': np.min(time_indices),
-                    'end_time': np.max(time_indices),
+                    'start_time': start_time,
+                    'end_time': end_time,
                     'adjusted_start_time': adjusted_start_time,
                     'adjusted_end_time': adjusted_end_time,
                     'pulse_duration': pulse_duration
@@ -241,7 +252,7 @@ for idx_n in range(start_idx, end_idx + 1):
                 print(f"Start Time: {np.min(time_indices)} | End Time : {np.max(time_indices)}")
                 global_pulse_number += 1
 
-def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99)):
+def estimate_bandwidth_1(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99)):
 
     nperseg = min(len(iq_data), 1024)
     freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False)
@@ -296,14 +307,9 @@ def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, cove
     print(f"[PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
     return bandwidth_mhz
 
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import welch
-from scipy.ndimage import gaussian_filter1d
-from sklearn.mixture import GaussianMixture
 
-def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, coverage=(0.01, 0.99), method='gmm'):
-    # Step 1: Compute PSD
+def estimate_bandwidth(iq_data, fs, max_components=10, coverage=(0.01, 0.99)):
+
     nperseg = min(len(iq_data), 1024)
     freqs, psd = welch(iq_data, fs=fs, nperseg=nperseg, noverlap=nperseg // 2, return_onesided=False, scaling='density')
     psd = np.fft.fftshift(psd)
@@ -312,59 +318,54 @@ def estimate_bandwidth(iq_data, fs, max_components=10, percentile_thresh=5, cove
     psd = psd / np.max(psd)
     psd_smooth = gaussian_filter1d(psd, sigma=0.1)
 
-    # Filter based on percentile
-    threshold = np.percentile(psd_smooth, percentile_thresh)
-    mask = psd_smooth > threshold
-    freqs_clean = freqs[mask]
-    psd_clean = psd_smooth[mask]
+    freqs_clean = freqs
+    psd_clean = psd_smooth
 
-    if method == 'gmm':
-        # Step 2: GMM Fit on PSD using replication
-        replication_factor = 1000
-        scaled_weights = (psd_clean * replication_factor).astype(int)
-        replicated_freqs = np.repeat(freqs_clean, scaled_weights)
-        X = replicated_freqs.reshape(-1, 1)
+    replication_factor = 1000
+    scaled_weights = (psd_clean * replication_factor).astype(int)
+    replicated_freqs = np.repeat(freqs_clean, scaled_weights)
+    X = replicated_freqs.reshape(-1, 1)
 
-        lowest_bic = np.inf
-        best_gmm = None
-        for n_components in range(1, max_components + 1):
-            gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=0)
-            gmm.fit(X)
-            bic = gmm.bic(X)
-            if bic < lowest_bic:
-                lowest_bic = bic
-                best_gmm = gmm
+    lowest_bic = np.inf
+    best_gmm = None
+    for n_components in range(1, max_components + 1):
+        gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=0)
+        gmm.fit(X)
+        bic = gmm.bic(X)
+        if bic < lowest_bic:
+            lowest_bic = bic
+            best_gmm = gmm
 
-        # PDF and CDF
-        freqs_sorted_idx = np.argsort(freqs)
-        freqs_sorted = freqs[freqs_sorted_idx]
-        pdf_vals = np.exp(best_gmm.score_samples(freqs_sorted.reshape(-1, 1)))
-        pdf_vals /= np.max(pdf_vals)
-        cdf = np.cumsum(pdf_vals)
-        cdf /= cdf[-1]
+    # PDF and CDF
+    freqs_sorted_idx = np.argsort(freqs)
+    freqs_sorted = freqs[freqs_sorted_idx]
+    pdf_vals = np.exp(best_gmm.score_samples(freqs_sorted.reshape(-1, 1)))
+    pdf_vals /= np.max(pdf_vals)
+    cdf = np.cumsum(pdf_vals)
+    cdf /= cdf[-1]
 
-        lower_idx = np.argmax(cdf >= coverage[0])
-        upper_idx = np.argmax(cdf >= coverage[1])
+    lower_idx = np.argmax(cdf >= coverage[0])
+    upper_idx = np.argmax(cdf >= coverage[1])
 
-        lower = freqs_sorted[lower_idx]
-        upper = freqs_sorted[upper_idx]
-        bandwidth_mhz = (upper - lower) / 1e6
+    lower = freqs_sorted[lower_idx]
+    upper = freqs_sorted[upper_idx]
+    bandwidth_mhz = (upper - lower) / 1e6
 
-        # Plot
-        plt.figure(figsize=(10, 4))
-        plt.plot(freqs / 1e6, psd_smooth, label="Smoothed PSD", color='black')
-        plt.plot(freqs_sorted / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
-        plt.axvline(lower / 1e6, color='blue', linestyle=':', label=f"{int(coverage[0]*100)}% Threshold")
-        plt.axvline(upper / 1e6, color='green', linestyle=':', label=f"{int(coverage[1]*100)}% Threshold")
-        plt.title("Bandwidth Estimation via GMM PDF")
-        plt.xlabel("Frequency (MHz)")
-        plt.ylabel("Normalized Power")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
+    # Plot
+    plt.figure(figsize=(10, 4))
+    plt.plot(freqs / 1e6, psd_smooth, label="Smoothed PSD", color='black')
+    plt.plot(freqs_sorted / 1e6, pdf_vals, '--', label="GMM PDF", color='red')
+    plt.axvline(lower / 1e6, color='blue', linestyle=':', label=f"{int(coverage[0]*100)}% Threshold")
+    plt.axvline(upper / 1e6, color='green', linestyle=':', label=f"{int(coverage[1]*100)}% Threshold")
+    plt.title("Bandwidth Estimation via GMM PDF")
+    plt.xlabel("Frequency (MHz)")
+    plt.ylabel("Power")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
-        print(f"[GMM PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
+    print(f"[GMM PDF Method] Estimated Bandwidth ≈ {bandwidth_mhz:.3f} MHz")
 
     return bandwidth_mhz
 
@@ -390,49 +391,53 @@ isolated_pulses_data = {}
 bandwidth_results = {}
 
 for pulse_num, (iq_start_idx, iq_end_idx) in mapped_pulse_indices.items():
-    extension = 2 * (iq_end_idx - iq_start_idx)
+    extension = 4 * (iq_end_idx - iq_start_idx)
     start_idx = max(0, iq_start_idx - extension)
     end_idx = min(len(radar_section), iq_end_idx + extension + 1)
     pure_signal = radar_section[start_idx:end_idx]
 
     signal_mag = np.abs(pure_signal)
-    otsu_thresh = threshold_otsu(signal_mag)
-    detection_map = (signal_mag > otsu_thresh).astype(int)
+    smoothed_mag = uniform_filter1d(signal_mag, size=5)
+
+    # Log-compress the signal magnitude
+    compressed_mag = np.log1p(smoothed_mag)
+
+    # Compute Otsu threshold on compressed data
+    otsu_thresh = threshold_otsu(compressed_mag)
+
+    # Detection mask on compressed magnitude
+    detection_map = (compressed_mag > otsu_thresh).astype(int)
 
     isolated_pulses_data[pulse_num] = {
-        'iq_data': pure_signal, 
+        'iq_data': pure_signal,
         'detection_mask': detection_map,
-        'threshold_map': np.full_like(signal_mag, otsu_thresh),
+        'threshold_map': np.full_like(signal_mag, np.expm1(otsu_thresh)),  # back-transform for visualization
         'cfar_filtered_signal': pure_signal[detection_map == 1]
     }
 
-    # Plotting example (optional)
     plt.figure(figsize=(10, 4))
     plt.plot(signal_mag, label="|IQ Signal|", color='blue', alpha=0.7)
-    plt.plot(np.full_like(signal_mag, otsu_thresh), label="Otsu Threshold", color='orange', linestyle='--')
+    plt.plot(np.full_like(signal_mag, np.expm1(otsu_thresh)), label="Log-Comp Otsu Threshold", color='orange', linestyle='--')
     detected_indices = np.where(detection_map == 1)[0]
     plt.scatter(detected_indices, signal_mag[detected_indices], color='green', label='Detections', s=30)
     plt.title(f"Pulse {pulse_num} - Otsu Thresholding")
     plt.xlabel("Sample Index")
     plt.ylabel("Amplitude")
-    plt.legend()
     plt.grid(True)
     plt.show()
 
-    # Estimate bandwidth from Otsu-filtered signal
+
     filtered_signal = isolated_pulses_data[pulse_num]['cfar_filtered_signal']
     if len(filtered_signal) > 0:
+        #bandwidth_mhz = estimate_bandwidth_1(filtered_signal, fs=sampling_rate)
         bandwidth_mhz = estimate_bandwidth(filtered_signal, fs=sampling_rate)
-        bandwidth = estimate_bandwidth(filtered_signal, fs=sampling_rate, method='gmm')
         # or
         #bandwidth = estimate_bandwidth(filtered_signal, fs=sampling_rate, method='percentile')
-
     else:
         bandwidth_mhz = 0.0  # Fallback if no detections
 
     # Store result per pulse
     bandwidth_results[pulse_num] = bandwidth_mhz
-    
 
     # (Optional) Add to per-pulse dictionary for traceability
     isolated_pulses_data[pulse_num]['bandwidth_mhz'] = bandwidth_mhz

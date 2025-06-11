@@ -109,7 +109,7 @@ plt.imshow(np.flipud(aa), interpolation='none', aspect='auto', extent=[cc[0], cc
 plt.title('Filtered Spectrograms')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 plt.show()
 
@@ -126,56 +126,43 @@ hori_avg = 30
 alarm_rate = 1e-9
 
 cfar_mask = Spectogram_FunctionsV3.create_2d_mask(vert_guard,vert_avg,hori_guard,hori_avg)
-
 padded_mask = Spectogram_FunctionsV3.create_2d_padded_mask(aa,cfar_mask)
-
 alpha = Spectogram_FunctionsV3.set_alpha(Spectogram_FunctionsV3.get_total_average_cells(vert_guard,vert_avg,hori_guard,hori_avg),alarm_rate)
-
-# thres_map = cfar_method(aa,cfar_mask,alpha)
 thres_map = Spectogram_FunctionsV3.cfar_method(aa,padded_mask,alpha)
-
-# Detect the targets using the spectrogram data
 aa_db_filtered = Spectogram_FunctionsV3.detect_targets(aa, thres_map)
 
 # Plot the Target Map
 plt.figure(figsize=(10, 5))
 plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[-1], bb[0]])
-plt.title('Targets---')
+plt.title('Targets')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
-# plt.show()
+plt.show()
 
-# Assume aa_filtered_clean is the spectrogram in dB format
-aa_filtered_clean = aa_db_filtered  # Use your existing spectrogram data
-# Create a filtered radar data array where values correspond to the non-zero entries of the CFAR mask
+aa_filtered_clean = aa_db_filtered 
 filtered_radar_data = aa * aa_filtered_clean
-
-# Create a new array to store the filtered spectrogram data (keep values where CFAR mask is non-zero)
-filtered_spectrogram_data = np.zeros_like(aa)  # Initialize with zeros (same shape as aa)
+filtered_spectrogram_data = np.zeros_like(aa)  
 filtered_spectrogram_data[aa_filtered_clean > 0] = aa[aa_filtered_clean > 0]
 
-# # Visualize the filtered spectrogram
-# plt.figure(figsize=(10, 5))
-# plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
-# plt.title("Filtered Spectrogram (Only Extracted Values)")
-# plt.colorbar(label="Intensity")
-# plt.xlabel("Time (samples)")
-# plt.ylabel("Frequency (Hz)")
-# plt.tight_layout()
-# plt.show()
+# Visualize the filtered spectrogram
+plt.figure(figsize=(10, 5))
+plt.imshow(filtered_spectrogram_data, cmap='jet', origin='lower', aspect='auto')
+plt.title("Filtered Spectrogram (Only Extracted Values)")
+plt.colorbar(label="Intensity")
+plt.xlabel("Time (samples)")
+plt.ylabel("Frequency (Hz)")
+plt.tight_layout()
+plt.show()
 
-# Apply binary dilation to widen the detected shapes (slashes)
 dilated_mask = binary_dilation(aa_filtered_clean, footprint=np.ones((1, 1)))
-# Label the connected components in the dilated binary mask
 labeled_mask, num_labels = label(aa_filtered_clean, connectivity=2, return_num=True)
 
-# Define thresholds
-min_angle = 30
-max_angle = 75
-min_diagonal_length = 20
-min_aspect_ratio = 1.5
+min_angle = 10
+max_angle = 85
+min_diagonal_length = 15
+min_aspect_ratio = 1
 
 # Create empty mask for valid slashes
 filtered_mask_slashes = np.zeros_like(dilated_mask, dtype=bool)
@@ -221,74 +208,65 @@ for region in regionprops(labeled_mask):
 
     # Fit a RANSAC regression model
     ransac = RANSACRegressor()
-    ransac.fit(x_vals.reshape(-1, 1), y_vals)  # Fit the model
+    ransac.fit(x_vals.reshape(-1, 1), y_vals) 
 
-    # Get the R² score (how well the line fits)
+    # Get the R^2 score
     r2_score = ransac.score(x_vals.reshape(-1, 1), y_vals)
-
-    # Set a lower R² threshold to allow slight variations
     min_r2_threshold = 0.85
 
     if r2_score < min_r2_threshold:
-        continue  # Skip non-straight shapes
+        continue 
 
-
-    # If passed all checks, add to final mask
     filtered_mask_slashes[labeled_mask == region.label] = True
 
-    # Debug: Draw bounding box
     plt.plot([minc, maxc, maxc, minc, minc], [minr, minr, maxr, maxr, minr], 'r-', linewidth=1)
 
 plt.tight_layout()
 plt.show()
 
-# Display final filtered mask
+# final filtered mask
 plt.figure(figsize=(10, 5))
 plt.imshow(filtered_mask_slashes, cmap='gray', origin='lower', aspect='auto')
-plt.title("Final Filtered Mask (Only Straight Slashes)")
+plt.title("Final Filtered Mask")
 plt.xlabel("Time (samples)")
 plt.ylabel("Frequency (Hz)")
 plt.tight_layout()
 plt.show()
 
-# Extract non-zero points as time-frequency data for clustering but are the indices from the spectogram
 time_freq_data = np.column_stack(np.where(filtered_mask_slashes > 0))
+
 # DBSCAN Clustering
 clusters = DBSCAN(eps=20, min_samples=1).fit_predict(time_freq_data)
-# Map the frequency indices to MHz
-frequencies_mhz = bb[time_freq_data[:, 0]]  # Convert frequency indices to MHz
-# Map the time indices to microseconds
-time_us = cc[time_freq_data[:, 1]]  # Time indices in µs
+frequencies_mhz = bb[time_freq_data[:, 0]] 
+time_us = cc[time_freq_data[:, 1]]
 
 plt.figure(figsize=(10, 5))
 plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
 plt.title('DBSCAN Clustering of Chirp Signals')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Cluster ID')
+#plt.colorbar(label='Cluster ID')
 plt.tight_layout()
 plt.show()
 
-# Plot the target map (filtered spectrogram)
 plt.figure(figsize=(10, 5))
 plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', extent=[cc[0], cc[-1], bb[0], bb[-1]])
 plt.title('Targets')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.colorbar(label='Filter Amplitude')
 
-for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
+for i, cluster in enumerate(np.unique(clusters[clusters != -1])): 
     cluster_points = time_freq_data[clusters == cluster]
     cluster_time_us = cc[cluster_points[:, 1]]  # Time in µs
     cluster_freq_mhz = bb[cluster_points[:, 0]]  # Frequency in MHz
     plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
 
-# Show the plot with the target map and cluster points
 plt.tight_layout()
-plt.legend()
+#plt.legend()
 plt.show(block=True)
 plt.show()
-# Number of clusters (excluding noise)
+
 num_clusters = len(np.unique(clusters[clusters != -1]))
 print(f"Number of clusters: {num_clusters}")
 
@@ -315,7 +293,6 @@ for cluster_id in np.unique(clusters):
         cluster_points = time_freq_data[clusters == cluster_id]
         frequency_indices = bb[cluster_points[:, 0]]  # Use the correct frequency bins (bb)
         
-        # 2nd column of the time_freq_data
         time_indices = cluster_points[:, 1]  # us
         bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
         center_frequency = np.mean(frequency_indices)
@@ -360,35 +337,29 @@ for cluster_id, params in cluster_params.items():
     iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
     mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
 
-# Initialize a dictionary to store isolated radar data for each cluster
+# Initialize a dictionary 
 isolated_pulses_data = {}
 
-# Populate the isolated I/Q data for each cluster
+
 for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
-    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)  # Zero-initialized array
+    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)  
     for idx in range(len(radar_section)):
-        if iq_start_idx <= idx <= iq_end_idx:  # Check if index is within the cluster range
+        if iq_start_idx <= idx <= iq_end_idx:  
             isolated_pulses_data[cluster_id][idx] = radar_section[idx]
 
-# Check if there are any isolated pulses data (i.e., clusters)
 if len(isolated_pulses_data) > 0:
-    # Visualize the isolated data for each cluster
     fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
 
-    # If there's only one cluster, make sure axes is not a list
     if len(isolated_pulses_data) == 1:
         axes = [axes]
 
-    # Plot each cluster's isolated I/Q data
     for idx, (cluster_id, iq_data) in enumerate(isolated_pulses_data.items()):
-        # Plot the I/Q data (real and imaginary parts)
         axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
         axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
-        
         axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
         axes[idx].set_xlabel("Index")
         axes[idx].set_ylabel("Amplitude")
-        axes[idx].legend()
+        #axes[idx].legend()
 
     plt.tight_layout()
     plt.show()

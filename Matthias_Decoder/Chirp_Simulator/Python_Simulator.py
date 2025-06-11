@@ -13,7 +13,6 @@ from skimage.measure import label, regionprops
 from sklearn.linear_model import RANSACRegressor
 from skimage.morphology import binary_dilation
 import math
-
 #-----------------------------------------------------------------------------------------
 import sys
 from pathlib import Path
@@ -145,7 +144,7 @@ plt.axvline(end_idx, linestyle='--', color='b', linewidth=1.5, label="End")
 plt.xlabel('Fast Time Index', fontweight='bold')
 plt.ylabel('Magnitude (dB)', fontweight='bold')
 plt.title(f'Overlay of Row {row_idx} Before and After Chirp Injection', fontweight='bold')
-plt.legend()
+#plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.show()
@@ -180,7 +179,7 @@ plt.imshow(np.flipud(aa), interpolation='none', aspect='auto', extent=[cc[-1], c
 plt.title('Targets')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 plt.show()
 
@@ -211,7 +210,7 @@ plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', exten
 plt.title('Targets')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.colorbar(label='Filter Amplitude')
 plt.tight_layout()
 
 # Assume aa_filtered_clean is the spectrogram in dB format
@@ -320,7 +319,7 @@ plt.scatter(time_us, frequencies_mhz, c=clusters, cmap='viridis', s=5)
 plt.title('DBSCAN Clustering of Chirp Signals')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Cluster ID')
+#plt.colorbar(label='Cluster ID')
 plt.tight_layout()
 plt.show()
 
@@ -329,7 +328,7 @@ plt.imshow(np.flipud(aa_db_filtered), interpolation='none', aspect='auto', exten
 plt.title('Targets')
 plt.xlabel('Time [us]')
 plt.ylabel('Frequency [MHz]')
-plt.colorbar(label='Filter Amplitude')
+#plt.colorbar(label='Filter Amplitude')
 
 for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noise points
     cluster_points = time_freq_data[clusters == cluster]
@@ -338,7 +337,7 @@ for i, cluster in enumerate(np.unique(clusters[clusters != -1])):  # Exclude noi
     plt.scatter(cluster_time_us, cluster_freq_mhz, c='r', label=f'Cluster {i}', s=5, edgecolors='none', marker='o')
 
 plt.tight_layout()
-plt.legend()
+#plt.legend()
 plt.show(block=True)
 
 # Number of clusters (excluding noise)
@@ -368,10 +367,12 @@ for cluster_id in np.unique(clusters):
         frequency_indices = bb[cluster_points[:, 0]]
         
         time_indices = cc[cluster_points[:, 1]]  # Time Indices in us
+        start_time = np.min(time_indices)
+        end_time = np.max(time_indices)
         
         bandwidth = np.max(frequency_indices) - np.min(frequency_indices)
         center_frequency = (np.max(frequency_indices) + np.min(frequency_indices)) / 2
-        time_span = np.max(time_indices) - np.min(time_indices)  # us
+        time_span = start_time - end_time  # us
         if time_span != 0:
             chirp_rate = bandwidth / time_span  # MHz per us
         else:
@@ -381,8 +382,8 @@ for cluster_id in np.unique(clusters):
             'bandwidth': bandwidth,
             'center_frequency': center_frequency,
             'chirp_rate': chirp_rate,
-            'start_time_index': np.min(time_indices),
-            'end_time_index': np.max(time_indices)
+            'start_time': np.min(time_indices),
+            'end_time': np.max(time_indices)
         }
 
 for cluster_id, params in cluster_params.items():
@@ -390,13 +391,9 @@ for cluster_id, params in cluster_params.items():
     print(f"  Bandwidth: {params['bandwidth']} MHz")
     print(f"  Center Frequency: {params['center_frequency']} MHz")
     print(f"  Chirp Rate: {params['chirp_rate']} MHz/us")
-    print(f"  Start Time Index (us): {params['start_time_index']}")
-    print(f"  End Time Index (us): {params['end_time_index']}")
+    print(f"  Start Time (us): {params['start_time']}")
+    print(f"  End Time (us): {params['end_time']}")
     print('---------------------------')
-
-# # Numpy Array conversition
-# cluster_params_array = np.array([[cluster_id, params['bandwidth'], params['center_frequency'], params['chirp_rate'], params['start_time_index'], params['end_time_index']]
-#                                  for cluster_id, params in cluster_params.items()])
 
 NFFT = 256
 noverlap = 200
@@ -406,41 +403,37 @@ time_step = (NFFT - noverlap) / sampling_rate  # seconds
 # Map cluster indices to I/Q start and end indices
 mapped_cluster_indices = {}
 for cluster_id, params in cluster_params.items():
-    start_time_idx = params['start_time_index']
-    end_time_idx = params['end_time_index']
-    iq_start_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(start_time_idx, sampling_rate, time_step)
-    iq_end_idx = Spectogram_FunctionsV3.spectrogram_to_iq_indices(end_time_idx, sampling_rate, time_step)
+    start_time_idx = params['start_time']
+    end_time_idx = params['end_time']
+    iq_start_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(start_time_idx, sampling_rate)
+    iq_end_idx = Spectogram_FunctionsV3.spectrogram_time_us_to_iq_index(end_time_idx, sampling_rate)
     mapped_cluster_indices[cluster_id] = (iq_start_idx, iq_end_idx)
 
-# Initialize a dictionary to store isolated radar data for each cluster
+# Initialize a dictionary
 isolated_pulses_data = {}
 
 # Populate the isolated I/Q data for each cluster
 for cluster_id, (iq_start_idx, iq_end_idx) in mapped_cluster_indices.items():
-    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)  # Zero-initialized array
+    isolated_pulses_data[cluster_id] = np.zeros_like(radar_section, dtype=complex)
     for idx in range(len(radar_section)):
-        if iq_start_idx <= idx <= iq_end_idx:  # Check if index is within the cluster range
+        if iq_start_idx <= idx <= iq_end_idx:  
             isolated_pulses_data[cluster_id][idx] = radar_section[idx]
 
-# Check if there are any isolated pulses data (i.e., clusters)
-if len(isolated_pulses_data) > 0:
-    # Visualize the isolated data for each cluster
-    fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
 
-    # If there's only one cluster, make sure axes is not a list
+if len(isolated_pulses_data) > 0:
+    fig, axes = plt.subplots(len(isolated_pulses_data), 1, figsize=(10, 6), sharex=True, sharey=True)
     if len(isolated_pulses_data) == 1:
         axes = [axes]
 
     # Plot each cluster's isolated I/Q data
     for idx, (cluster_id, iq_data) in enumerate(isolated_pulses_data.items()):
-        # Plot the I/Q data (real and imaginary parts)
         axes[idx].plot(np.real(iq_data), label=f"Cluster {cluster_id} - Real", color='blue')
         axes[idx].plot(np.imag(iq_data), label=f"Cluster {cluster_id} - Imaginary", color='red')
         
         axes[idx].set_title(f"Cluster {cluster_id} - Isolated I/Q Data")
         axes[idx].set_xlabel("Index")
         axes[idx].set_ylabel("Amplitude")
-        axes[idx].legend()
+        #axes[idx].legend()
 
     plt.tight_layout()
     plt.show()
