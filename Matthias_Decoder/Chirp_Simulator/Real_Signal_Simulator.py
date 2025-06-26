@@ -101,75 +101,91 @@ ax.set_title(f'Spectrogram from rangeline {idx_n}', fontweight='bold')
 plt.tight_layout()
 plt.show()
 
-# ------------------------ Parameters ------------------------
-fs = 46918402.8  # Sampling frequency (Hz)
-bw = 5e6  # Bandwidth (Hz)
-fc = -4e6  # Center frequency offset (Hz)
-chirp_duration_us = 20  # Chirp duration in microseconds
-chirp_duration_s = chirp_duration_us * 1e-6
-row_idx = 560  # Row to inject chirp into
+# ------------------------ Parameters & Pulse Generation ------------------------
+fs = 46918402.8            # Sampling frequency (Hz)
+bw = 5e6                   # Bandwidth for LFM (Hz)
+fc = -4e6                  # Center frequency offset (Hz)
+duration_us = 20           # Pulse duration in microseconds
+row_idx = 560              # Row to inject pulse into
 
-# Time and chirp rate
-num_samples = int(chirp_duration_s * fs)
-T = num_samples / fs
-t = np.linspace(0, T, num_samples)
-chirp_rate = bw / chirp_duration_s
+# === Select ONE waveform type ===
+# waveform_type = 'lfm'      # Linear chirp
+#waveform_type = 'cw'       # Constant tone
+# waveform_type = 'barker'   # Phase-coded pulse
+#waveform_type = 'frank'   # Phase-coded pulse
+#waveform_type = 'sine_fm'   # Phase-coded pulse
+#waveform_type = 'freq_hop'   # Phase-coded pulse
+waveform_type = 'train'   # Phase-coded pulse
 
-# Chirp start and end frequency
-start_freq = fc - bw / 2
-end_freq = fc + bw / 2
 
-# ---------------- Steep Rise/Fall and Sinusoidal Envelope Mod ----------------
-rise_steepness = 7
-fall_steepness = 4
+# === Generate pulse ===
+if waveform_type == 'lfm':
+    pulse = Spectogram_FunctionsV3.generate_lfm(fs=fs, bw=bw, fc=fc, duration_us=duration_us)
 
-# Control rise and fall lengths as fractions of total samples
-rise_len = int(num_samples * 0.05)  # 5% rise
-fall_len = int(num_samples * 0.45)   # 20% fall — you can change this to control fall length
+elif waveform_type == 'cw':
+    pulse = Spectogram_FunctionsV3.generate_cw(fs=fs, fc=fc, duration_us=duration_us)
 
-# Flat length is what's left
-flat_len = num_samples - rise_len - fall_len
+elif waveform_type == 'barker':
+    pulse = Spectogram_FunctionsV3.generate_barker(fs=fs, fc=fc, duration_us=duration_us)
 
-if flat_len < 0:
-    raise ValueError("rise_len + fall_len exceeds total number of samples")
+elif waveform_type == 'frank':
+    pulse = Spectogram_FunctionsV3.generate_frank(fs=fs, fc=fc, duration_us=duration_us)
 
-rise = (np.linspace(0, 1, rise_len)) ** rise_steepness
-fall = 1 - (np.linspace(0, 1, fall_len)) ** fall_steepness
+elif waveform_type == 'sine_fm':
+    pulse = Spectogram_FunctionsV3.generate_sine_fm(fs=fs, bw=bw, fc=fc, duration_us=duration_us)
 
-flat = np.linspace(1, 0.98, flat_len)
+elif waveform_type == 'freq_hop':
+    pulse = Spectogram_FunctionsV3.generate_frequency_hop(fs=fs, fc_list=[-4e6, -3e6, -5e6], duration_us=duration_us)
 
-envelope = np.concatenate([rise, flat, fall])
+elif waveform_type == 'train':
+    pulse = Spectogram_FunctionsV3.generate_pulse_train(Spectogram_FunctionsV3.generate_lfm, num_pulses=3, pulse_gap_us=10,fs=fs, bw=bw, fc=fc, duration_us=8)
 
-# Apply gentle sinusoidal amplitude modulation
-mod_depth = 0.01
-mod_freq = 1
-modulation = 1 + mod_depth * np.sin(2 * np.pi * mod_freq * t / T)
-envelope *= modulation
+else:
+    raise ValueError(f"Unsupported waveform type: {waveform_type}")
 
-# Normalize
-envelope /= np.max(envelope)
 
-# ------------------------ Chirp Signal ------------------------
-phase = 2 * np.pi * (start_freq * t + 0.5 * chirp_rate * t**2)
-chirp_signal = 200 * np.exp(1j * phase)
+# Ensure t is always defined
+num_samples = len(pulse)
+t = np.linspace(0, duration_us * 1e-6, num_samples)
 
-# # Add noise and slight DC bias
-# np.random.seed(42)
-# chirp_signal += (0.01 * np.random.randn(num_samples) + 1j * 0.01 * np.random.randn(num_samples))
+
+# === Apply envelope & modulation (optional) ===
+if waveform_type in ['lfm', 'cw']:
+    rise_len = int(num_samples * 0.05)
+    fall_len = int(num_samples * 0.45)
+    flat_len = num_samples - rise_len - fall_len
+
+    if flat_len < 0:
+        raise ValueError("rise_len + fall_len exceeds pulse length")
+
+    rise = (np.linspace(0, 1, rise_len)) ** 7
+    flat = np.linspace(1, 0.98, flat_len)
+    fall = 1 - (np.linspace(0, 1, fall_len)) ** 4
+    envelope = np.concatenate([rise, flat, fall])
+
+    # Sinusoidal AM
+    mod_depth = 0.01
+    mod_freq = 1
+    modulation = 1 + mod_depth * np.sin(2 * np.pi * mod_freq * t / (duration_us * 1e-6))
+    envelope *= modulation
+    envelope /= np.max(envelope)
+
+    pulse *= envelope
 
 # ------------------------ Inject Into Radar Data ------------------------
 num_cols = radar_data.shape[1]
+num_samples = len(pulse)
 start_idx = num_cols // 2
 end_idx = start_idx + num_samples
 
 if end_idx > num_cols:
-    raise ValueError("Chirp duration exceeds radar data width.")
+    raise ValueError("Pulse duration exceeds radar data width.")
 
 radar_data_original = radar_data[row_idx, :].copy()
 
-chirp_signal_padded = np.zeros(num_cols, dtype=complex)
-chirp_signal_padded[start_idx:end_idx] = chirp_signal
-radar_data[row_idx, :] += chirp_signal_padded
+pulse_padded = np.zeros(num_cols, dtype=complex)
+pulse_padded[start_idx:end_idx] = pulse
+radar_data[row_idx, :] += pulse_padded
 
 # ------------------------ Overlay Plot ------------------------
 plt.figure(figsize=(10, 6))
@@ -186,19 +202,20 @@ plt.tight_layout()
 plt.show()
 
 # ------------------------ Envelope Plot ------------------------
-plt.figure(figsize=(8, 4))
-plt.plot(t * 1e6, envelope)
-plt.title("Realistic Amplitude Envelope (Steep Rise/Fall + Modulation)")
-plt.xlabel("Time (µs)")
-plt.ylabel("Normalized Amplitude")
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+if waveform_type in ['lfm', 'cw']:
+    plt.figure(figsize=(8, 4))
+    plt.plot(t * 1e6, envelope)
+    plt.title("Realistic Amplitude Envelope (Steep Rise/Fall + Modulation)")
+    plt.xlabel("Time (µs)")
+    plt.ylabel("Normalized Amplitude")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 # ------------------------ IQ Signal Plot ------------------------
 plt.figure(figsize=(10, 4))
-plt.plot(np.real(chirp_signal), label='I (In-phase)')
-plt.plot(np.imag(chirp_signal), label='Q (Quadrature)')
+plt.plot(np.real(pulse), label='I (In-phase)')
+plt.plot(np.imag(pulse), label='Q (Quadrature)')
 plt.title("Injected Chirp IQ Components (Air Defense Emulation)")
 plt.xlabel("Sample Index")
 plt.ylabel("Amplitude")
@@ -680,3 +697,74 @@ plt.show()
 #         print(f"Pulse {pulse_num}: {bw:.6f} MHz")
 #     else:
 #         print(f"Pulse {pulse_num}: Bandwidth estimation failed or unavailable.")
+
+
+# ------------------------ Parameters ------------------------
+# fs = 46918402.8  # Sampling frequency (Hz)
+# bw = 5e6  # Bandwidth (Hz)
+# fc = -4e6  # Center frequency offset (Hz)
+# chirp_duration_us = 20  # Chirp duration in microseconds
+# chirp_duration_s = chirp_duration_us * 1e-6
+# row_idx = 560  # Row to inject chirp into
+
+# # Time and chirp rate
+# num_samples = int(chirp_duration_s * fs)
+# T = num_samples / fs
+# t = np.linspace(0, T, num_samples)
+# chirp_rate = bw / chirp_duration_s
+
+# # Chirp start and end frequency
+# start_freq = fc - bw / 2
+# end_freq = fc + bw / 2
+
+# # ---------------- Steep Rise/Fall and Sinusoidal Envelope Mod ----------------
+# rise_steepness = 7
+# fall_steepness = 4
+
+# # Control rise and fall lengths as fractions of total samples
+# rise_len = int(num_samples * 0.05)  # 5% rise
+# fall_len = int(num_samples * 0.45)   # 20% fall — you can change this to control fall length
+
+# # Flat length is what's left
+# flat_len = num_samples - rise_len - fall_len
+
+# if flat_len < 0:
+#     raise ValueError("rise_len + fall_len exceeds total number of samples")
+
+# rise = (np.linspace(0, 1, rise_len)) ** rise_steepness
+# fall = 1 - (np.linspace(0, 1, fall_len)) ** fall_steepness
+
+# flat = np.linspace(1, 0.98, flat_len)
+
+# envelope = np.concatenate([rise, flat, fall])
+
+# # Apply gentle sinusoidal amplitude modulation
+# mod_depth = 0.01
+# mod_freq = 1
+# modulation = 1 + mod_depth * np.sin(2 * np.pi * mod_freq * t / T)
+# envelope *= modulation
+
+# # Normalize
+# envelope /= np.max(envelope)
+
+# # ------------------------ Chirp Signal ------------------------
+# phase = 2 * np.pi * (start_freq * t + 0.5 * chirp_rate * t**2)
+# chirp_signal = 200 * np.exp(1j * phase)
+
+# # # Add noise and slight DC bias
+# # np.random.seed(42)
+# # chirp_signal += (0.01 * np.random.randn(num_samples) + 1j * 0.01 * np.random.randn(num_samples))
+
+# # ------------------------ Inject Into Radar Data ------------------------
+# num_cols = radar_data.shape[1]
+# start_idx = num_cols // 2
+# end_idx = start_idx + num_samples
+
+# if end_idx > num_cols:
+#     raise ValueError("Chirp duration exceeds radar data width.")
+
+# radar_data_original = radar_data[row_idx, :].copy()
+
+# chirp_signal_padded = np.zeros(num_cols, dtype=complex)
+# chirp_signal_padded[start_idx:end_idx] = chirp_signal
+# radar_data[row_idx, :] += chirp_signal_padded

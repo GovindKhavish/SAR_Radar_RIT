@@ -144,7 +144,7 @@ for idx_n in range(start_idx, end_idx + 1):
 
     min_angle = 10
     max_angle = 85
-    min_diagonal_length = 15
+    min_diagonal_length = 10
     min_aspect_ratio = 1
 
     filtered_mask_slashes = np.zeros_like(aa_filtered_clean, dtype=bool)
@@ -206,8 +206,8 @@ for idx_n in range(start_idx, end_idx + 1):
         num_clusters = len(np.unique(clusters[clusters != -1]))
 
         # ------------------ Skip Feature Extraction if More Than 2 Clusters -------------------
-        if (num_clusters > 2 or num_clusters == 0):
-            continue
+        # if (num_clusters > 2 or num_clusters == 0):
+        #     continue
 
         # ------------------ Assign Global Pulse Numbers and Adjusted Times -------------------
         for cluster_id in np.unique(clusters):
